@@ -85,8 +85,13 @@ update listener that resets the interval timer). Config flow validates
      for that one entity, using `trigger`/event `to_state.state` directly
      (§4), not a fresh `states()` read.
    - `time_pattern` interval → full republish loop over all entities.
-   - On-demand republish callback (Phase 1 replacement for the
-     `force_republish_sensors` event — see open question below).
+   - On-demand republish: a domain service call,
+     `ha_mqtt_bridge.republish`, registered against the config entry,
+     doing the same full republish loop as the time_pattern trigger. This
+     is the Phase 1 replacement for the blueprint's
+     `force_republish_sensors` event. A `button` entity is deferred to
+     Phase 2 but will be a thin wrapper that calls this same service, so
+     the service is the one place the "full republish" behavior lives.
    - Jitter: random 0–9s delay before each discovery/state publish,
      applied per-publish so a burst of state changes still spreads load
      (equivalent to the blueprint's `mode: parallel, max: 50`).
@@ -111,8 +116,14 @@ blueprint side.
 - `strings.json`/translations, `manifest.json` metadata for HACS
   (`hacs.json`, versioning), diagnostics platform for support requests.
 - Broaden test coverage (config flow, coordinator timing) toward CI.
-- Decide the final shape of the on-demand full-republish trigger (service
-  call vs. button entity vs. both — see open question).
+- `button` entity per config entry that calls `ha_mqtt_bridge.republish`.
+- **Multi-entry support** (lower priority — not currently needed, but
+  worth designing for): allow multiple config entries so one HA install
+  can run several bridge instances (e.g. against different brokers or
+  with different `bridge_name`/prefixes). Phase 1 targets a single entry;
+  as long as `unique_id`/service registration in Phase 1 are keyed per
+  config entry rather than assumed global, this should not require
+  rework later.
 
 ### Phase 3 — Revisit deliberately-dropped/limited behavior
 
@@ -125,22 +136,21 @@ Only after Phase 1 is proven interoperable and Phase 2 has shipped:
   wire-protocol changes and would need coordination with other running
   instances, so they're out of scope until Phase 1/2 are stable.
 
-## Open questions before Phase 1 implementation starts
+## Decisions
 
-1. **On-demand full republish trigger**: the blueprint used a custom HA
-   event (`force_republish_sensors`). For the integration, a `homeassistant.services.yaml`
-   service call (e.g. `ha_mqtt_bridge.republish`) is the idiomatic
-   replacement, optionally paired with a `button` entity per config entry.
-   Confirm which (or both) you want in Phase 1 vs. deferring the button to
-   Phase 2.
-2. **Minimum HA core version / MQTT integration dependency**: confirm
-   target `homeassistant` version floor for `manifest.json` so the right
-   `mqtt` component API surface (`async_subscribe`/`async_publish`
-   signatures) is targeted.
-3. **Multiple config entries**: does the integration need to support more
-   than one bridge instance per HA install (multiple config entries,
-   e.g. bridging to two different brokers), or is a single entry sufficient
-   for Phase 1?
+1. **On-demand full republish trigger**: `services.yaml` service call
+   `ha_mqtt_bridge.republish` in Phase 1. The Phase 2 `button` entity
+   calls this same service rather than duplicating the republish logic.
+2. **Minimum HA core version**: `2026.7`. `manifest.json`
+   `"homeassistant"` requirement pinned accordingly; target the
+   `mqtt` component's `async_subscribe`/`async_publish` API surface as of
+   that release.
+3. **Multiple config entries**: not needed for Phase 1 (single entry is
+   sufficient), but plausible later. Phase 1 must not hardcode
+   assumptions that only one entry exists (e.g. service registration and
+   any module-level state must be keyed per config entry). Full
+   multi-entry support (e.g. per-entry MQTT client considerations) is
+   tracked as a lower-priority Phase 2 item.
 
-Once these are settled, Phase 1 work can start directly from the file
-layout above, using `PROTOCOL.md` as the acceptance spec for each module.
+Phase 1 work can start directly from the file layout above, using
+`PROTOCOL.md` as the acceptance spec for each module.
