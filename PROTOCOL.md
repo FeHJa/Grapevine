@@ -48,6 +48,7 @@ its native discovery type.
   "device_class": "<omitted entirely if unknown, not null>",
   "unit_of_measurement": "<omitted entirely if unknown, not null>",
   "bridge_id": "<slug_bridge_name>",
+  "protocol_version": 1,
   "device": {
     "identifiers": ["<slug_bridge_name>"],
     "name": "<bridge_name>",
@@ -55,6 +56,12 @@ its native discovery type.
   }
 }
 ```
+
+`protocol_version` is a new field, not present in the original blueprint's
+payload. It is safe to add: other instances already tolerate the
+non-standard `bridge_id` key today (they ignore unknown JSON keys), so one
+more integer field does not break their forwarding or loop-prevention
+logic. See §8 for why it's there.
 
 ### device_class / unit_of_measurement resolution order
 
@@ -118,3 +125,41 @@ Raw state string only (no JSON wrapping), published retained to the state topic.
 The blueprint name is "...(stable, no availability)" — availability/LWT tracking existed at
 some point and was removed for stability. Check the source repo's commit history for why
 before reintroducing this in Phase 3.
+
+## 8. Forward compatibility: Phase 3 target design (named, not implemented)
+
+Phase 1 reproduces the blueprint's MQTT-Discovery-emulation protocol exactly, as specified
+above, with no wire changes. However, a target design for a future protocol generation has
+been identified and is documented here so it doesn't need to be rediscovered later. It is
+**not implemented in Phase 1 or Phase 2**, and is gated on coordinating a rollout with the
+other two bridge instances — do not build it unprompted.
+
+**Problem it solves:** the current protocol emulates MQTT Discovery by writing into
+`local_discovery_prefix` (`homeassistant/` by default) — a namespace shared with
+Zigbee2MQTT/ESPHome/Tasmota discovery. Combined with the §2 object_id/domain collision
+known limitation, this is a real risk of a bridged entity colliding with, or being
+overwritten by, an unrelated device's discovery message.
+
+**Target design:** each bridge instance publishes its own retained JSON "manifest" —
+a list of `{bridge_id, object_id, domain, name, device_class, unit, state_topic}` per
+bridged entity — under a dedicated, bridge-only topic tree:
+`ha_bridge/{bridge_id}/manifest`. Other instances subscribe only to the manifests of
+bridges they explicitly opt into (a config-flow "follow list", not a blanket subscribe to
+everything on the shared prefix). Each instance diffs the manifest against the native HA
+entities it has already instantiated for that remote bridge, and creates/removes native
+entities directly through its own entity platform. There is no MQTT Discovery emulation
+in this design, no writes to the local discovery root, and no forwarding/echo-prevention
+logic (§5) — a bridge just reads its followed peers' manifests and reconciles entities
+against them. As a side effect, this eliminates both §2 known limitations: entities carry
+their real domain and no longer collide on a shared `sensor/{object_id}` topic.
+
+**Migration path — `protocol_version`:** every own-payload JSON this integration
+publishes carries a `protocol_version` integer field (§3; Phase 1 sets it to `1`). Once a
+future manifest-based payload exists, it will carry its own `protocol_version` (2+). This
+lets any instance inspect `protocol_version` per bridge partner on incoming messages and
+decide, per partner, whether to speak the legacy discovery protocol or the manifest
+protocol — enabling a gradual, partner-by-partner rollout instead of a synchronized
+cutover across all three instances on one day.
+
+See `MIGRATION_PLAN.md` for the internal `ProtocolAdapter` abstraction that keeps Phase 1's
+implementation swappable when this design is eventually built.

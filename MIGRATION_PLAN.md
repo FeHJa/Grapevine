@@ -19,32 +19,60 @@ object_id collision, per-domain discovery components, availability/LWT)
 is explicitly deferred to a later phase so the two known limitations can be
 verified against real behavior before anyone decides whether to keep them.
 
+**Forward-compatibility seam (Phase 1 scope, not a wire change):** a target
+design for a future protocol generation has been identified — see
+`PROTOCOL.md` §8 — that replaces MQTT-Discovery-emulation with a
+manifest-publish-and-diff model and native entity creation. It is **not**
+being implemented now (it's gated on coordinating a rollout with the other
+two bridge instances). Phase 1 is built so reaching it later doesn't
+require a rewrite: every outgoing own-payload JSON gets a `protocol_version`
+field (§3, value `1` for Phase 1), and the protocol-specific
+publish/subscribe/parse logic lives behind a small internal
+`ProtocolAdapter` interface rather than being hardcoded into the MQTT I/O
+layer. See "Target architecture" and "Phase 3" below.
+
 ## Target architecture
 
 ```
 custom_components/ha_mqtt_bridge/
 ├── __init__.py          # async_setup_entry / async_unload_entry, wires everything together
 ├── manifest.json         # domain, dependencies: [mqtt], config_flow: true, iot_class
-├── const.py               # DOMAIN, CONF_* keys, defaults, sw_version, the 8 regex patterns
+├── const.py               # DOMAIN, CONF_* keys, defaults, sw_version, PROTOCOL_VERSION, the 8 regex patterns
 ├── config_flow.py         # ConfigFlow + OptionsFlow — maps blueprint inputs (§1), sets unique_id
 ├── scheduler.py            # entity-tracking, time_pattern trigger, on-demand republish, jitter
 ├── discovery.py           # payload building (§3), device_class/unit resolution (§3 table)
-├── mqtt_bridge.py         # publish own discovery+state (§2-4), subscribe+forward (§5), loop guard
+├── protocol.py             # ProtocolAdapter interface (seam for PROTOCOL.md §8's future manifest protocol)
+├── mqtt_io.py              # thin, protocol-agnostic MQTT client wrapper (subscribe/publish, retained)
+├── adapters/
+│   └── legacy_discovery.py # LegacyDiscoveryAdapter(ProtocolAdapter) — Phase 1's protocol (§2-5), the only adapter that exists right now
 └── strings.json / translations/en.json
 tests/
 ├── test_config_flow.py
-├── test_discovery.py      # regex table, name fallback, device_class/unit precedence
-├── test_mqtt_bridge.py    # topic construction, forwarding, loop prevention
+├── test_discovery.py       # regex table, name fallback, device_class/unit precedence
+├── test_legacy_discovery_adapter.py  # topic construction, forwarding, loop prevention, protocol_version
 ├── test_scheduler.py       # time_pattern trigger, jitter bounds, on-demand republish
-└── test_integration.py    # entry setup/reload/unload against pytest-homeassistant-custom-component
+└── test_integration.py     # entry setup/reload/unload against pytest-homeassistant-custom-component
 ```
 
 Rationale for the split: `discovery.py` is pure functions (entity/state in,
 payload dict out) so the device_class/unit regex table and name-fallback
 logic can be unit-tested without a running HA instance or MQTT broker.
-`mqtt_bridge.py` owns all `homeassistant.components.mqtt` interaction
-(`async_subscribe`/`async_publish`). `scheduler.py` owns timing: the
-`time_pattern` trigger, the on-demand republish entry point, and jitter.
+`mqtt_io.py` owns raw `homeassistant.components.mqtt` interaction
+(`async_subscribe`/`async_publish`) and knows nothing about discovery
+payloads or forwarding rules — it's the layer any future adapter reuses
+unchanged. `protocol.py` defines the `ProtocolAdapter` interface
+(`publish_own_entities()`, `handle_incoming_message(topic, payload)`,
+`topics_to_subscribe()`); `adapters/legacy_discovery.py` is Phase 1's (and
+today, the only) implementation — it owns everything protocol-specific:
+building discovery/state payloads via `discovery.py`, the forwarding logic
+and loop guard (§5), and stamping `protocol_version` on outgoing payloads.
+`scheduler.py` drives timing (the `time_pattern` trigger, the on-demand
+republish service, jitter) by calling the active adapter's
+`publish_own_entities()` — it never talks to MQTT or builds a payload
+directly, so a future manifest-based adapter slots in without touching
+`scheduler.py` or `__init__.py`'s wiring. Phase 1 has exactly one adapter
+registered; the interface exists now so a second one is additive later,
+not a rewrite.
 
 **Naming note:** this module is deliberately *not* called `coordinator.py`
 and does not subclass HA's `DataUpdateCoordinator` — Phase 1 has no
@@ -106,14 +134,22 @@ moving more of them into `options` before Phase 2 locks in the flow.
    `async_setup_entry`/`async_unload_entry`.
 2. `discovery.py`: build the discovery payload (§3) exactly — field
    presence/omission rules, the 8-pattern regex table ported **verbatim**,
-   friendly_name → title-cased object_id fallback.
-3. `mqtt_bridge.py`:
+   friendly_name → title-cased object_id fallback, plus the new
+   `protocol_version: PROTOCOL_VERSION` field (const, value `1`) per
+   `PROTOCOL.md` §3/§8.
+3. `protocol.py` + `adapters/legacy_discovery.py` (the seam — see
+   "Target architecture" above), using `mqtt_io.py` for all actual broker
+   I/O:
    - Own publish path: discovery → `{shared_discovery_prefix}sensor/{object_id}/config`,
      state → `{sensor_value_prefix}sensor/{object_id}`, both retained (§2, §4).
    - Federation subscribe: `{shared_discovery_prefix}+/+/config` using the
      *configured* prefix (not the blueprint's hardcoded literal — §5).
    - Forwarding: verbatim byte passthrough to
      `{local_discovery_prefix}/{component}/{object_id}/config`, retained.
+     Verbatim means literally that — a forwarded payload's `protocol_version`
+     (if the origin bridge already sends one) passes through unmodified;
+     `LegacyDiscoveryAdapter` never rewrites bytes it's forwarding, only
+     bytes it originates.
    - Loop guard ported exactly: skip on `bridge_id` match or `unique_id`
      prefix match (`::` or `.` separator) (§5).
 4. `scheduler.py`:
@@ -143,9 +179,10 @@ moving more of them into `options` before Phase 2 locks in the flow.
      and auto-cancelled on unload) rather than raw `asyncio.create_task`,
      so a full republish burst can't leak untracked tasks past entry
      unload (equivalent in spirit to the blueprint's `mode: parallel, max: 50`).
-5. Unit tests for `discovery.py` (regex table, fallbacks) and
-   `mqtt_bridge.py` (topic strings, forwarding, loop guard) — these encode
-   `PROTOCOL.md` as executable spec. In addition, integration-level tests
+5. Unit tests for `discovery.py` (regex table, fallbacks, `protocol_version`
+   presence) and `adapters/legacy_discovery.py` (topic strings, forwarding
+   verbatim-passthrough, loop guard) — these encode `PROTOCOL.md` as
+   executable spec. In addition, integration-level tests
    using `pytest-homeassistant-custom-component` (`hass` + `mqtt_mock`
    fixtures) covering config-entry setup/reload/unload: subscription is
    created on setup, torn down on unload/reload (no duplicate forwarding
@@ -156,11 +193,13 @@ moving more of them into `options` before Phase 2 locks in the flow.
    confirm discovery entities appear on both sides and no forwarding loop
    occurs.
 
-**Acceptance criteria:** topic layout, payload shape, regex table, and loop
-prevention match `PROTOCOL.md` exactly; both documented known limitations
-are present and unfixed; a blueprint instance and this integration
-interoperate over the same broker without behavior changes on the
-blueprint side.
+**Acceptance criteria:** topic layout, payload shape (including the new
+`protocol_version: 1` field), regex table, and loop prevention match
+`PROTOCOL.md` exactly; both documented known limitations are present and
+unfixed; a blueprint instance and this integration interoperate over the
+same broker without behavior changes on the blueprint side; the
+`ProtocolAdapter` interface exists and `LegacyDiscoveryAdapter` is its only
+implementation — no manifest-based adapter is built or wired up.
 
 ### Phase 2 — Integration polish
 
@@ -181,16 +220,35 @@ blueprint side.
   (wasteful, not incorrect) — acceptable for Phase 2, worth a mention in
   docs/options-flow help text.
 
-### Phase 3 — Revisit deliberately-dropped/limited behavior
+### Phase 3 — Manifest-based protocol (named target, not started)
 
-Only after Phase 1 is proven interoperable and Phase 2 has shipped:
+Full design in `PROTOCOL.md` §8 — summarized here for the phase-plan view.
+**Gated on coordinating a rollout with the other two bridge instances; do
+not start implementation without that coordination happening first.**
 
+- Replace MQTT-Discovery-emulation with each bridge publishing a retained
+  JSON manifest (`{bridge_id, object_id, domain, name, device_class, unit,
+  state_topic}` per entity) to `ha_bridge/{bridge_id}/manifest`.
+- Config flow gains a "follow list" — which peer bridges' manifests to
+  subscribe to (opt-in, not blanket-subscribe like today's shared prefix).
+- New adapter, `adapters/manifest.py` implementing `ProtocolAdapter`,
+  diffs a followed peer's manifest against currently-instantiated native
+  entities for that peer and creates/removes them directly via this
+  integration's own entity platform. No writes to `local_discovery_prefix`,
+  no forwarding, no loop-guard logic — the whole §5 mechanism goes away
+  for bridges that have moved to this protocol.
+- `protocol_version` (§3/§8) on incoming messages lets a bridge decide,
+  per followed peer, whether to speak legacy-discovery or manifest
+  protocol — this is what makes a gradual per-partner rollout possible
+  instead of a synchronized cutover.
+- As a side effect, resolves both §2 known limitations (object_id/domain
+  collision, hardcoded `sensor` component) — entities are created with
+  their real domain directly, no shared discovery topic to collide on.
 - Investigate blueprint commit history for why availability/LWT tracking
-  was removed (§7) before considering reintroducing it.
-- Evaluate whether to fix the two known limitations (object_id domain
-  collision, hardcoded `sensor` component for own entities) — these are
-  wire-protocol changes and would need coordination with other running
-  instances, so they're out of scope until Phase 1/2 are stable.
+  was removed (§7) before considering reintroducing it — the direct
+  entity-platform model in this phase makes availability tracking
+  straightforward to add if wanted (no more piggybacking on MQTT Discovery's
+  own `availability_topic` convention).
 
 ## Decisions
 
@@ -207,6 +265,19 @@ Only after Phase 1 is proven interoperable and Phase 2 has shipped:
    any module-level state must be keyed per config entry). Full
    multi-entry support (e.g. per-entry MQTT client considerations) is
    tracked as a lower-priority Phase 2 item.
+4. **`protocol_version` field**: added to every outgoing own-payload JSON
+   starting in Phase 1 (value `1`), even though nothing reads it yet.
+   Cost is one constant and one dict key; the payoff is that Phase 3's
+   manifest protocol can be rolled out per-partner instead of requiring a
+   synchronized cutover across all three bridge instances. See
+   `PROTOCOL.md` §8.
+5. **`ProtocolAdapter` abstraction**: Phase 1's discovery/forwarding/loop-
+   guard logic is implemented as `LegacyDiscoveryAdapter`, behind a
+   `ProtocolAdapter` interface, rather than inlined into the MQTT I/O
+   layer. Only one adapter exists right now — this is purely a seam so a
+   future `adapters/manifest.py` (Phase 3, not started) is additive rather
+   than a rewrite of `scheduler.py`/`__init__.py`'s wiring. Do not build
+   the manifest adapter now; it's gated on cross-instance coordination.
 
 Phase 1 work can start directly from the file layout above, using
 `PROTOCOL.md` as the acceptance spec for each module.
