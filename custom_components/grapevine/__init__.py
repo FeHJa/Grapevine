@@ -46,10 +46,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         protocol_adapter=adapter,
     )
     entry.async_on_unload(remote_entity_manager.async_unload)
-    # Reconfigure (data changes) and the options flow (time_pattern_minutes)
-    # both go through hass.config_entries.async_update_entry, which is what
-    # fires this -- so one listener covers picking up both kinds of change
-    # (issue #7; previously nothing reloaded the entry after either).
+    # GrapevineOptionsFlow's single "Configure" step (data and options
+    # fields alike) goes through hass.config_entries.async_update_entry,
+    # which is what fires this (issue #7; previously nothing reloaded the
+    # entry after a change).
     entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
 
     # Must happen before scheduler.async_setup() starts the federation MQTT
@@ -94,7 +94,7 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     # before this. This is the sending-side half (issue #7): depublish
     # every entity this bridge was publishing, so other instances --
     # Grapevine or blueprint -- don't keep it around as a stale entity
-    # forever. Uses the same async_depublish_entity as reconfigure's
+    # forever. Uses the same async_depublish_entity as the options flow's
     # per-entity removal.
     runtime_data: GrapevineRuntimeData | None = entry.runtime_data
     if runtime_data is None:

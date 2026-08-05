@@ -130,13 +130,17 @@ local MQTT Discovery root, and that forwarding no longer happens (§5a).
 `PROTOCOL.md` §1 keeps it listed as a historical note about what the
 *blueprint* does; it's not part of this integration's config schema.
 
-**Known UX tradeoff, flagged not resolved:** every field listed above under
-`data` was a freely-editable blueprint input, not credential-like identity.
-Putting them in `data` means changing any of them post-setup requires a
-reconfigure flow (or delete/recreate) rather than an options edit. This is
-the conventional HA split (identity vs. safely-reconfigurable), but if
-`entities`/prefixes turn out to need frequent editing in practice, revisit
-moving more of them into `options` before Phase 2 locks in the flow.
+**Resolved (issue #7):** the split above still applies to *where fields are
+stored* (`entities`/prefixes/`bridge_name` in `data`, `time_pattern` in
+`options`), but not to *how they're edited*. The original plan put the
+`data` fields behind a separate "Reconfigure" flow, following the
+conventional HA identity-vs-safely-reconfigurable split — in practice that
+second entry point wasn't discoverable (users only ever found the gear-icon
+"Configure" button and concluded entities/prefixes/bridge_name couldn't be
+changed at all). `GrapevineOptionsFlow` was widened to edit every field —
+`data` and `options` alike — in one single "Configure" step, updating both
+via one `hass.config_entries.async_update_entry(...)` call. There is no
+longer a separate `async_step_reconfigure`.
 
 ## Phase breakdown
 
@@ -292,13 +296,17 @@ present and unfixed, per §5a — this phase doesn't touch them.
 ### Phase 2 — Integration polish
 
 - ~~Options flow for `time_pattern`~~ **Done** (issue #7): `GrapevineOptionsFlow`
-  for `time_pattern_minutes`, plus `async_step_reconfigure` for the
-  `data` fields (entities/prefixes/bridge_name), wired to an
-  `entry.add_update_listener` that actually reloads the entry on either
-  kind of change — previously nothing did. Entities dropped from the
-  list during reconfigure, or the whole entry on removal, are now
-  depublished (empty retained payload) rather than left as stale
-  entities on other instances; see `PROTOCOL.md` §5/`async_depublish_entity`.
+  is the single "Configure" step covering every editable field —
+  `time_pattern_minutes` plus the `data` fields (entities/prefixes/
+  bridge_name) — wired to an `entry.add_update_listener` that actually
+  reloads the entry on any change — previously nothing did. An earlier
+  version of this split entities/prefixes/bridge_name into a separate
+  `async_step_reconfigure` flow, but that second entry point wasn't
+  discoverable in practice (issue #7's reopening) and was folded back into
+  `GrapevineOptionsFlow`. Entities dropped from the list, or the whole
+  entry on removal, are now depublished (empty retained payload) rather
+  than left as stale entities on other instances; see `PROTOCOL.md`
+  §5b/`async_depublish_entity`.
 - `strings.json`/translations, `manifest.json` metadata for HACS
   (`hacs.json`, versioning), diagnostics platform for support requests.
 - Broaden test coverage (config flow, scheduler timing) toward CI.

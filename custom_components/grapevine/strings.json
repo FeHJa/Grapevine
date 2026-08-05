@@ -10,25 +10,14 @@
           "sensor_value_prefix": "Sensor value prefix",
           "time_pattern_minutes": "Full republish interval (minutes)"
         }
-      },
-      "reconfigure": {
-        "title": "Reconfigure Grapevine",
-        "data": {
-          "bridge_name": "Bridge name",
-          "entities": "Entities to bridge",
-          "shared_discovery_prefix": "Shared discovery prefix",
-          "sensor_value_prefix": "Sensor value prefix"
-        }
       }
     },
     "error": {
       "invalid_bridge_name": "Bridge name must contain at least one letter, digit, space or underscore.",
-      "no_entities": "Select at least one entity to bridge.",
-      "already_configured": "Another bridge is already using that name."
+      "no_entities": "Select at least one entity to bridge."
     },
     "abort": {
-      "already_configured": "A bridge with this name is already configured.",
-      "reconfigure_successful": "Bridge reconfigured."
+      "already_configured": "A bridge with this name is already configured."
     }
   },
   "options": {
@@ -36,9 +25,18 @@
       "init": {
         "title": "Grapevine options",
         "data": {
+          "bridge_name": "Bridge name",
+          "entities": "Entities to bridge",
+          "shared_discovery_prefix": "Shared discovery prefix",
+          "sensor_value_prefix": "Sensor value prefix",
           "time_pattern_minutes": "Full republish interval (minutes)"
         }
       }
+    },
+    "error": {
+      "invalid_bridge_name": "Bridge name must contain at least one letter, digit, space or underscore.",
+      "no_entities": "Select at least one entity to bridge.",
+      "already_configured": "Another bridge is already using that name."
     }
   },
   "services": {

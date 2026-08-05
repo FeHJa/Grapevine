@@ -1,7 +1,10 @@
 """Config flow — maps the blueprint's inputs (PROTOCOL.md §1) onto a config
-entry. Three flows: initial setup (async_step_user), editing the identity
-fields on an existing entry (async_step_reconfigure, issue #7), and editing
-the republish interval (GrapevineOptionsFlow, issue #7)."""
+entry. Two flows: initial setup (async_step_user) and a single consolidated
+"Configure" flow for everything editable afterwards -- entities, both
+prefixes, bridge name, and the republish interval (GrapevineOptionsFlow,
+issue #7). These used to be split across "Configure" (options-only) and a
+separate "Reconfigure" action, but that split wasn't discoverable in
+practice -- see issue #7's reopening."""
 
 from __future__ import annotations
 
@@ -45,22 +48,25 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
 TIME_PATTERN_SELECTOR = vol.All(vol.Coerce(int), vol.Range(min=1, max=60))
 
 
-def _reconfigure_schema(current: dict[str, Any]) -> vol.Schema:
-    # Deliberately excludes time_pattern_minutes -- that's the options
-    # flow's field, not this one's (data vs. options split, see
-    # MIGRATION_PLAN.md's Config entry mapping section).
+def _options_schema(current_data: dict[str, Any], current_options: dict[str, Any]) -> vol.Schema:
     return vol.Schema(
         {
-            vol.Required(CONF_BRIDGE_NAME, default=current[CONF_BRIDGE_NAME]): str,
+            vol.Required(CONF_BRIDGE_NAME, default=current_data[CONF_BRIDGE_NAME]): str,
             vol.Required(
-                CONF_ENTITIES, default=current[CONF_ENTITIES]
+                CONF_ENTITIES, default=current_data[CONF_ENTITIES]
             ): selector.EntitySelector(selector.EntitySelectorConfig(multiple=True)),
             vol.Required(
-                CONF_SHARED_DISCOVERY_PREFIX, default=current[CONF_SHARED_DISCOVERY_PREFIX]
+                CONF_SHARED_DISCOVERY_PREFIX, default=current_data[CONF_SHARED_DISCOVERY_PREFIX]
             ): str,
             vol.Required(
-                CONF_SENSOR_VALUE_PREFIX, default=current[CONF_SENSOR_VALUE_PREFIX]
+                CONF_SENSOR_VALUE_PREFIX, default=current_data[CONF_SENSOR_VALUE_PREFIX]
             ): str,
+            vol.Required(
+                CONF_TIME_PATTERN_MINUTES,
+                default=current_options.get(
+                    CONF_TIME_PATTERN_MINUTES, DEFAULT_TIME_PATTERN_MINUTES
+                ),
+            ): TIME_PATTERN_SELECTOR,
         }
     )
 
@@ -103,10 +109,24 @@ class GrapevineConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors
         )
 
-    async def async_step_reconfigure(
+    @staticmethod
+    @callback
+    def async_get_options_flow(
+        config_entry: config_entries.ConfigEntry,
+    ) -> GrapevineOptionsFlow:
+        return GrapevineOptionsFlow()
+
+
+class GrapevineOptionsFlow(config_entries.OptionsFlow):
+    """The single "Configure" flow for an existing entry -- entities, both
+    prefixes, bridge name, and the republish interval all live here. Does
+    not set self.config_entry in __init__: that's deprecated as of HA
+    2025.12 in favor of the base class providing it automatically."""
+
+    async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.ConfigFlowResult:
-        reconfigure_entry = self._get_reconfigure_entry()
+        entry = self.config_entry
         errors: dict[str, str] = {}
 
         if user_input is not None:
@@ -118,29 +138,25 @@ class GrapevineConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             elif not entities:
                 errors["base"] = "no_entities"
             elif any(
-                entry.entry_id != reconfigure_entry.entry_id
-                and entry.unique_id == slug_bridge_name
-                for entry in self._async_current_entries()
+                other.entry_id != entry.entry_id and other.unique_id == slug_bridge_name
+                for other in self.hass.config_entries.async_entries(DOMAIN)
             ):
                 # Renaming the bridge is allowed (it's the same case as
                 # any other identity field changing) -- this only rejects
                 # renaming *onto* a slug some other entry already owns.
                 errors["base"] = "already_configured"
             else:
-                # Depublish entities dropped from the list *before*
-                # updating entry.data, while we can still reach the live
-                # adapter -- see PROTOCOL.md §5/async_depublish_entity and
-                # issue #7. Renaming the bridge itself (slug change) is
-                # not handled here: that would orphan every entity under
-                # the old slug too, which is a separate, not-yet-decided
-                # piece of scope.
-                removed_entities = set(reconfigure_entry.data[CONF_ENTITIES]) - set(entities)
-                runtime_data = reconfigure_entry.runtime_data
+                # Depublish entities dropped from the list *before* the
+                # update below triggers a reload, while we can still reach
+                # the live adapter -- see PROTOCOL.md §5b and issue #7.
+                # Renaming the bridge itself (slug change) is not handled
+                # here: that would orphan every entity under the old slug
+                # too, which is a separate, not-yet-decided piece of scope.
+                removed_entities = set(entry.data[CONF_ENTITIES]) - set(entities)
+                runtime_data = entry.runtime_data
                 if runtime_data is not None:
                     for entity_id in removed_entities:
                         await runtime_data.protocol_adapter.async_depublish_entity(entity_id)
-
-                await self.async_set_unique_id(slug_bridge_name)
 
                 new_data = {
                     CONF_ENTITIES: entities,
@@ -152,53 +168,21 @@ class GrapevineConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     ),
                     CONF_BRIDGE_NAME: user_input[CONF_BRIDGE_NAME],
                 }
-                # Triggers the update listener registered in __init__.py,
-                # which reloads the entry -- no manual reload call here.
+                new_options = {CONF_TIME_PATTERN_MINUTES: user_input[CONF_TIME_PATTERN_MINUTES]}
+                # One update call covering data/title/unique_id/options --
+                # triggers the update listener registered in __init__.py
+                # once, which reloads the entry.
                 self.hass.config_entries.async_update_entry(
-                    reconfigure_entry, title=user_input[CONF_BRIDGE_NAME], data=new_data
+                    entry,
+                    title=user_input[CONF_BRIDGE_NAME],
+                    data=new_data,
+                    options=new_options,
+                    unique_id=slug_bridge_name,
                 )
-                return self.async_abort(reason="reconfigure_successful")
-
-        return self.async_show_form(
-            step_id="reconfigure",
-            data_schema=_reconfigure_schema(reconfigure_entry.data),
-            errors=errors,
-        )
-
-    @staticmethod
-    @callback
-    def async_get_options_flow(
-        config_entry: config_entries.ConfigEntry,
-    ) -> GrapevineOptionsFlow:
-        return GrapevineOptionsFlow()
-
-
-class GrapevineOptionsFlow(config_entries.OptionsFlow):
-    """Just time_pattern_minutes -- the only field that was ever designed
-    to be safely reconfigurable without touching entry.data (see
-    MIGRATION_PLAN.md's Config entry mapping section). Does not set
-    self.config_entry in __init__: that's deprecated as of HA 2025.12 in
-    favor of the base class providing it automatically."""
-
-    async def async_step_init(
-        self, user_input: dict[str, Any] | None = None
-    ) -> config_entries.ConfigFlowResult:
-        if user_input is not None:
-            # async_create_entry here sets entry.options directly (not a
-            # new entry) and triggers the same update listener as
-            # reconfigure does, reloading the entry.
-            return self.async_create_entry(data=user_input)
+                return self.async_create_entry(data=new_options)
 
         return self.async_show_form(
             step_id="init",
-            data_schema=vol.Schema(
-                {
-                    vol.Required(
-                        CONF_TIME_PATTERN_MINUTES,
-                        default=self.config_entry.options.get(
-                            CONF_TIME_PATTERN_MINUTES, DEFAULT_TIME_PATTERN_MINUTES
-                        ),
-                    ): TIME_PATTERN_SELECTOR,
-                }
-            ),
+            data_schema=_options_schema(entry.data, entry.options),
+            errors=errors,
         )

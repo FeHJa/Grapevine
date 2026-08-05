@@ -55,7 +55,8 @@ class ConfigEntriesRegistry:
     config_flow.py relies on, entity-platform forward/unload so
     custom_components.grapevine.sensor's async_setup_entry can be driven
     the same way real HA drives it, and update/reload plumbing so
-    reconfigure/options-flow changes can be tested end-to-end (issue #7)."""
+    options-flow changes can be tested end-to-end across a real reload
+    (issue #7)."""
 
     def __init__(self, hass: Any = None) -> None:
         self._hass = hass
@@ -75,6 +76,7 @@ class ConfigEntriesRegistry:
         data: dict | None = None,
         options: dict | None = None,
         title: str | None = None,
+        unique_id: str | None = None,
     ) -> bool:
         changed = False
         if data is not None and data != entry.data:
@@ -85,6 +87,9 @@ class ConfigEntriesRegistry:
             changed = True
         if title is not None and title != entry.title:
             entry.title = title
+            changed = True
+        if unique_id is not None and unique_id != entry.unique_id:
+            entry.unique_id = unique_id
             changed = True
 
         if changed:
@@ -163,14 +168,6 @@ class ConfigFlow:
             if entry.unique_id == self.unique_id:
                 raise AbortFlow("already_configured")
 
-    def _async_current_entries(self) -> list[ConfigEntry]:
-        return self.hass.config_entries.async_entries(self.domain)
-
-    def _get_reconfigure_entry(self) -> ConfigEntry:
-        entry = self.hass.config_entries.async_get_entry(self.context["entry_id"])
-        if entry is None:
-            raise AssertionError("_get_reconfigure_entry: no entry_id in context, or entry gone")
-        return entry
 
     def async_show_form(self, *, step_id: str, data_schema, errors: dict | None = None) -> dict:
         return {"type": "form", "step_id": step_id, "data_schema": data_schema, "errors": errors or {}}
