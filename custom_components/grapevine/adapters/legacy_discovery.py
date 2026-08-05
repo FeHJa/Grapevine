@@ -66,12 +66,33 @@ class LegacyDiscoveryAdapter(ProtocolAdapter):
         # PROTOCOL.md §4: raw state string, no JSON wrapping.
         await mqtt_io.async_publish(self._hass, state_topic, state.state, retain=True)
 
+    async def async_depublish_entity(self, entity_id: str) -> None:
+        # Empty retained payload is the standard MQTT Discovery removal
+        # signal -- HA's own mqtt integration (and therefore any
+        # blueprint-based receiver forwarding into it) already treats this
+        # as "remove this entity"; LegacyDiscoveryAdapter.handle_incoming_message
+        # below teaches Grapevine-based receivers to recognize it too.
+        object_id = object_id_from_entity_id(entity_id)
+        discovery_topic = f"{self._shared_discovery_prefix}sensor/{object_id}/config"
+        state_topic = f"{self._sensor_value_prefix}sensor/{object_id}"
+
+        await mqtt_io.async_publish(self._hass, discovery_topic, "", retain=True)
+        await mqtt_io.async_publish(self._hass, state_topic, "", retain=True)
+
     async def handle_incoming_message(self, topic: str, payload: str) -> None:
         # Topic-shape validation only (§2) -- component/object_id aren't
         # needed downstream since §5a, RemoteEntityManager keys everything
         # off the payload's own unique_id.
         if parse_federation_topic(topic, self._shared_discovery_prefix) is None:
             _LOGGER.debug("Ignoring message on unexpected topic shape: %s", topic)
+            return
+
+        if not payload:
+            # Empty payload = removal signal (see async_depublish_entity).
+            # There's no JSON to loop-guard against, so correlate purely by
+            # topic -- RemoteEntityManager remembers which unique_id it
+            # last associated with this topic, if any.
+            await self._remote_entity_manager.async_handle_removal(topic)
             return
 
         try:
@@ -83,7 +104,7 @@ class LegacyDiscoveryAdapter(ProtocolAdapter):
         if is_own_message(payload_data, self._slug_bridge_name):
             return
 
-        await self._remote_entity_manager.async_handle_discovery(payload_data)
+        await self._remote_entity_manager.async_handle_discovery(topic, payload_data)
 
     async def async_handle_mqtt_message(self, msg: mqtt.ReceiveMessage) -> None:
         await self.handle_incoming_message(msg.topic, msg.payload)

@@ -28,6 +28,15 @@ class ProtocolAdapter(ABC):
         """Publish this bridge's own discovery + state for one entity."""
 
     @abstractmethod
+    async def async_depublish_entity(self, entity_id: str) -> None:
+        """Retract a previously-published own entity (empty retained
+        payload) -- used when an entity is dropped from the bridged list
+        (issue #7) or the whole config entry is removed. A future
+        manifest-based adapter would implement this as removing the entry
+        from its manifest and republishing, rather than an empty payload,
+        but the intent -- "this entity is no longer ours" -- is the same."""
+
+    @abstractmethod
     async def handle_incoming_message(self, topic: str, payload: str) -> None:
         """Handle one incoming message on a subscribed topic, per this
         adapter's protocol (e.g. LegacyDiscoveryAdapter materializes it as

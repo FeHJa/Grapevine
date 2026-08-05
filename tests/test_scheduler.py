@@ -34,6 +34,9 @@ class RecordingAdapter(ProtocolAdapter):
     async def publish_own_entity(self, entity_id, state) -> None:
         self.published.append((entity_id, state.state))
 
+    async def async_depublish_entity(self, entity_id) -> None:
+        pass
+
     async def handle_incoming_message(self, topic, payload) -> None:
         pass
 

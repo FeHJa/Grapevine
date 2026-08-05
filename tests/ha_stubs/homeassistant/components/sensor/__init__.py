@@ -33,6 +33,15 @@ class SensorEntity:
     async def async_will_remove_from_hass(self) -> None:
         pass
 
+    async def async_remove(self) -> None:
+        """Minimal fake of Entity.async_remove() -- unregister from
+        hass.states and mark this entity as no longer attached."""
+        await self.async_will_remove_from_hass()
+        if self.hass is not None and self.entity_id is not None:
+            self.hass.states.async_remove(self.entity_id)
+        self.entity_id = None
+        self.hass = None
+
     def async_write_ha_state(self) -> None:
         if self.hass is None or self.entity_id is None:
             return

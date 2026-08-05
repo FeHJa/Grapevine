@@ -291,8 +291,14 @@ present and unfixed, per §5a — this phase doesn't touch them.
 
 ### Phase 2 — Integration polish
 
-- Options flow for `time_pattern` (and any other fields worth making
-  reconfigurable without a full reauth).
+- ~~Options flow for `time_pattern`~~ **Done** (issue #7): `GrapevineOptionsFlow`
+  for `time_pattern_minutes`, plus `async_step_reconfigure` for the
+  `data` fields (entities/prefixes/bridge_name), wired to an
+  `entry.add_update_listener` that actually reloads the entry on either
+  kind of change — previously nothing did. Entities dropped from the
+  list during reconfigure, or the whole entry on removal, are now
+  depublished (empty retained payload) rather than left as stale
+  entities on other instances; see `PROTOCOL.md` §5/`async_depublish_entity`.
 - `strings.json`/translations, `manifest.json` metadata for HACS
   (`hacs.json`, versioning), diagnostics platform for support requests.
 - Broaden test coverage (config flow, scheduler timing) toward CI.

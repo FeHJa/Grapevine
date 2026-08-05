@@ -23,6 +23,7 @@ from custom_components.grapevine.const import (
     DOMAIN,
     SERVICE_REPUBLISH,
 )
+from custom_components.grapevine.adapters.legacy_discovery import LegacyDiscoveryAdapter
 from custom_components.grapevine.remote_entity_manager import RemoteEntityManager
 from custom_components.grapevine.scheduler import BridgeScheduler
 
@@ -69,6 +70,7 @@ def test_setup_entry_wires_scheduler_onto_runtime_data():
     assert result is True
     assert isinstance(entry.runtime_data.scheduler, BridgeScheduler)
     assert isinstance(entry.runtime_data.remote_entity_manager, RemoteEntityManager)
+    assert isinstance(entry.runtime_data.protocol_adapter, LegacyDiscoveryAdapter)
 
 
 def test_setup_entry_registers_service_once():
@@ -150,3 +152,37 @@ def test_unload_entry_removes_its_republish_handler():
             )
 
     _run(scenario())
+
+
+def test_remove_entry_depublishes_every_bridged_entity():
+    hass = HomeAssistant()
+    entry = _make_entry("entry1", "Bridge Jakob", ["sensor.a", "sensor.b"])
+
+    async def scenario():
+        await grapevine.async_setup_entry(hass, entry)
+        # async_unload_entry always runs before async_remove_entry in real
+        # HA; the adapter/protocol_adapter on runtime_data must still work
+        # for depublishing after that unload.
+        await grapevine.async_unload_entry(hass, entry)
+        await entry.async_unload()
+
+        mqtt._state(hass).published.clear()
+        await grapevine.async_remove_entry(hass, entry)
+
+    _run(scenario())
+
+    published = {(topic, payload) for topic, payload, _retain in mqtt._state(hass).published}
+    assert ("share/homeassistant/sensor/a/config", "") in published
+    assert ("share/jakob/sensor/a", "") in published
+    assert ("share/homeassistant/sensor/b/config", "") in published
+    assert ("share/jakob/sensor/b", "") in published
+
+
+def test_remove_entry_is_a_noop_when_setup_never_completed():
+    hass = HomeAssistant()
+    entry = _make_entry("entry1", "Bridge Jakob", ["sensor.a"])
+    # entry.runtime_data is None -- setup never ran (e.g. it failed).
+
+    _run(grapevine.async_remove_entry(hass, entry))  # must not raise
+
+    assert mqtt._state(hass).published == []

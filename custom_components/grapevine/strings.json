@@ -10,14 +10,35 @@
           "sensor_value_prefix": "Sensor value prefix",
           "time_pattern_minutes": "Full republish interval (minutes)"
         }
+      },
+      "reconfigure": {
+        "title": "Reconfigure Grapevine",
+        "data": {
+          "bridge_name": "Bridge name",
+          "entities": "Entities to bridge",
+          "shared_discovery_prefix": "Shared discovery prefix",
+          "sensor_value_prefix": "Sensor value prefix"
+        }
       }
     },
     "error": {
       "invalid_bridge_name": "Bridge name must contain at least one letter, digit, space or underscore.",
-      "no_entities": "Select at least one entity to bridge."
+      "no_entities": "Select at least one entity to bridge.",
+      "already_configured": "Another bridge is already using that name."
     },
     "abort": {
-      "already_configured": "A bridge with this name is already configured."
+      "already_configured": "A bridge with this name is already configured.",
+      "reconfigure_successful": "Bridge reconfigured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Grapevine options",
+        "data": {
+          "time_pattern_minutes": "Full republish interval (minutes)"
+        }
+      }
     }
   },
   "services": {

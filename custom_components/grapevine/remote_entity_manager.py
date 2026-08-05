@@ -13,6 +13,7 @@ import logging
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import mqtt_io
@@ -28,12 +29,13 @@ class RemoteEntityManager:
         self._entry = entry
         self._entities: dict[str, BridgedSensorEntity] = {}
         self._state_unsubs: dict[str, callable] = {}
+        self._topic_to_unique_id: dict[str, str] = {}
         self._add_entities_callback: AddEntitiesCallback | None = None
 
     def set_add_entities_callback(self, callback: AddEntitiesCallback) -> None:
         self._add_entities_callback = callback
 
-    async def async_handle_discovery(self, payload_data: dict) -> None:
+    async def async_handle_discovery(self, topic: str, payload_data: dict) -> None:
         unique_id = payload_data.get("unique_id")
         state_topic = payload_data.get("state_topic")
         if not unique_id or not state_topic:
@@ -60,6 +62,7 @@ class RemoteEntityManager:
                 device_name=device_name,
                 device_sw_version=device_sw_version,
             )
+            self._topic_to_unique_id[topic] = unique_id
             return
 
         entity = BridgedSensorEntity(
@@ -81,6 +84,7 @@ class RemoteEntityManager:
             return
 
         self._entities[unique_id] = entity
+        self._topic_to_unique_id[topic] = unique_id
         self._state_unsubs[unique_id] = await mqtt_io.async_subscribe(
             self._hass, state_topic, self._make_state_handler(unique_id)
         )
@@ -90,6 +94,31 @@ class RemoteEntityManager:
         # rather than absent from hass.states until its first state_topic
         # message arrives.
         entity.async_write_ha_state()
+
+    async def async_handle_removal(self, topic: str) -> None:
+        """An empty retained payload arrived on `topic` (issue #7 / §5's
+        removal convention). Remove whatever entity we last associated
+        with this exact topic, if any -- an empty payload carries no
+        unique_id of its own, so topic is the only correlation we have."""
+        unique_id = self._topic_to_unique_id.pop(topic, None)
+        if unique_id is None:
+            _LOGGER.debug("Ignoring removal on topic we never discovered anything from: %s", topic)
+            return
+
+        unsub = self._state_unsubs.pop(unique_id, None)
+        if unsub is not None:
+            unsub()
+
+        entity = self._entities.pop(unique_id, None)
+        if entity is None:
+            return
+
+        entity_id = entity.entity_id
+        await entity.async_remove()
+        if entity_id is not None:
+            registry = er.async_get(self._hass)
+            if registry.async_get(entity_id) is not None:
+                registry.async_remove(entity_id)
 
     def _make_state_handler(self, unique_id: str):
         async def _handle_state_message(msg) -> None:
@@ -104,3 +133,4 @@ class RemoteEntityManager:
             unsub()
         self._state_unsubs.clear()
         self._entities.clear()
+        self._topic_to_unique_id.clear()
