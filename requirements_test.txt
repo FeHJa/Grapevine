@@ -1,0 +1,21 @@
+pytest>=8.0
+
+# All tests in this repo run against tests/ha_stubs/ — a small hand-written
+# fake of the Home Assistant surface this integration touches (state
+# machine, event bus, service registry, config entries, MQTT pub/sub). It
+# exists because this project's dev sandbox cannot install a real
+# `homeassistant` package matching the 2026.7 core floor (pip's mirror here
+# tops out at 2024.3.3, and even that failed to build via a broken
+# transitive dependency — see git history for the investigation). No extra
+# packages are required beyond pytest; see
+# tests/ha_stubs/homeassistant/__init__.py for what the stub does and does
+# not model.
+#
+# This is NOT a substitute for Phase 1's real acceptance testing
+# (MIGRATION_PLAN.md): before release, also run against actual Home
+# Assistant core with pytest-homeassistant-custom-component, and do the
+# manual interop test against a real broker + the blueprint automation
+# (MIGRATION_PLAN.md Phase 1 step 6). Add once a matching dev environment
+# is available:
+#   pytest-homeassistant-custom-component
+#   homeassistant>=2026.7

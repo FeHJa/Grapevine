@@ -1,0 +1,35 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Set up HA MQTT Bridge",
+        "data": {
+          "bridge_name": "Bridge name",
+          "entities": "Entities to bridge",
+          "shared_discovery_prefix": "Shared discovery prefix",
+          "sensor_value_prefix": "Sensor value prefix",
+          "time_pattern_minutes": "Full republish interval (minutes)"
+        }
+      }
+    },
+    "error": {
+      "invalid_bridge_name": "Bridge name must contain at least one letter, digit, space or underscore.",
+      "no_entities": "Select at least one entity to bridge."
+    },
+    "abort": {
+      "already_configured": "A bridge with this name is already configured."
+    }
+  },
+  "services": {
+    "republish": {
+      "name": "Republish",
+      "description": "Force a full discovery + state republish for a bridge instance (replaces the blueprint's force_republish_sensors event).",
+      "fields": {
+        "config_entry_id": {
+          "name": "Bridge instance",
+          "description": "Which HA MQTT Bridge config entry to republish."
+        }
+      }
+    }
+  }
+}
