@@ -1,14 +1,21 @@
 pytest>=8.0
 
-# discovery.py has no Home Assistant dependency by design, so
-# tests/test_discovery.py runs with pytest alone.
+# All tests in this repo run against tests/ha_stubs/ — a small hand-written
+# fake of the Home Assistant surface this integration touches (state
+# machine, event bus, service registry, config entries, MQTT pub/sub). It
+# exists because this project's dev sandbox cannot install a real
+# `homeassistant` package matching the 2026.7 core floor (pip's mirror here
+# tops out at 2024.3.3, and even that failed to build via a broken
+# transitive dependency — see git history for the investigation). No extra
+# packages are required beyond pytest; see
+# tests/ha_stubs/homeassistant/__init__.py for what the stub does and does
+# not model.
 #
-# config_flow.py, scheduler.py, adapters/legacy_discovery.py and
-# __init__.py import homeassistant directly and are not exercised by any
-# test in this repo yet — Phase 1's acceptance criteria for those modules
-# (MIGRATION_PLAN.md) require pytest-homeassistant-custom-component plus
-# a homeassistant install matching the 2026.7 core floor, which the
-# sandbox this was authored in cannot provide. Add both once a matching
-# dev environment is available:
+# This is NOT a substitute for Phase 1's real acceptance testing
+# (MIGRATION_PLAN.md): before release, also run against actual Home
+# Assistant core with pytest-homeassistant-custom-component, and do the
+# manual interop test against a real broker + the blueprint automation
+# (MIGRATION_PLAN.md Phase 1 step 6). Add once a matching dev environment
+# is available:
 #   pytest-homeassistant-custom-component
 #   homeassistant>=2026.7
