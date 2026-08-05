@@ -1,10 +1,12 @@
 """HA MQTT Bridge — native integration port of the MQTT bridge blueprint.
 
 See PROTOCOL.md for the wire-protocol contract this must reproduce, and
-MIGRATION_PLAN.md for the phased rollout this is Phase 1 of.
+MIGRATION_PLAN.md for the phased rollout this is Phase 1(b) of.
 """
 
 from __future__ import annotations
+
+from dataclasses import dataclass
 
 import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
@@ -15,18 +17,38 @@ from homeassistant.helpers import config_validation as cv
 from . import mqtt_io
 from .adapters.legacy_discovery import LegacyDiscoveryAdapter
 from .const import ATTR_CONFIG_ENTRY_ID, DOMAIN, SERVICE_REPUBLISH
+from .remote_entity_manager import RemoteEntityManager
 from .scheduler import BridgeScheduler
 
+PLATFORMS: list[str] = ["sensor"]
+
 SERVICE_REPUBLISH_SCHEMA = vol.Schema({vol.Required(ATTR_CONFIG_ENTRY_ID): cv.string})
+
+
+@dataclass
+class HaMqttBridgeData:
+    scheduler: BridgeScheduler
+    remote_entity_manager: RemoteEntityManager
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if not await mqtt_io.async_wait_for_mqtt_client(hass):
         raise ConfigEntryNotReady("MQTT integration is not ready")
 
-    adapter = LegacyDiscoveryAdapter(hass, entry)
+    remote_entity_manager = RemoteEntityManager(hass, entry)
+    adapter = LegacyDiscoveryAdapter(hass, entry, remote_entity_manager)
     scheduler = BridgeScheduler(hass, entry, adapter)
-    entry.runtime_data = scheduler
+    entry.runtime_data = HaMqttBridgeData(
+        scheduler=scheduler, remote_entity_manager=remote_entity_manager
+    )
+    entry.async_on_unload(remote_entity_manager.async_unload)
+
+    # Must happen before scheduler.async_setup() starts the federation MQTT
+    # subscription below -- the sensor platform registers the
+    # async_add_entities callback RemoteEntityManager needs before it can
+    # materialize anything (§5a); this ordering, not a queue, is what
+    # prevents an early incoming message from being dropped.
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     # Services are domain-global, not per-entry, so on-demand republish
     # dispatches through a small entry-keyed registry rather than a
@@ -49,11 +71,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    # Subscriptions, the time_pattern trigger, in-flight jittered tasks and
-    # the republish-handler registration were all registered via
-    # entry.async_on_unload during setup, so the framework tears them down
-    # after this returns — nothing else to do here.
-    return True
+    # Unloading the sensor platform removes the native entities this entry
+    # created (§5a) -- this is what makes "remove the bridge" actually
+    # clean up after itself for federated entities, unlike the old
+    # forward-to-local-discovery approach where HA's own mqtt integration
+    # owned that lifecycle.
+    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
 
 def _make_republish_service_handler(hass: HomeAssistant):

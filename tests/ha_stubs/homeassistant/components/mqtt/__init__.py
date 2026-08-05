@@ -51,8 +51,11 @@ async def async_subscribe(hass, topic: str, msg_callback: Callable, qos: int = 0
 
 async def async_fire_mqtt_message(hass, topic: str, payload: str) -> None:
     """Test helper: deliver a message to every subscription whose filter
-    matches `topic` (single-level '+' wildcard only)."""
-    for filter_topic, callbacks in _state(hass).subscriptions.items():
+    matches `topic` (single-level '+' wildcard only). Snapshots the
+    subscriptions dict before dispatching, since handling a message can
+    itself subscribe to a new topic (e.g. a freshly-discovered federated
+    entity's state topic) -- mutating the dict mid-iteration otherwise."""
+    for filter_topic, callbacks in list(_state(hass).subscriptions.items()):
         if _topic_matches(filter_topic, topic):
             for cb in list(callbacks):
                 result = cb(ReceiveMessage(topic=topic, payload=payload))

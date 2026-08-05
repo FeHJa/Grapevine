@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import importlib
+from collections.abc import Iterable
 from typing import Any
 
 from .data_entry_flow import AbortFlow
@@ -37,14 +39,50 @@ class ConfigEntry:
 
 
 class ConfigEntriesRegistry:
-    """Test double for hass.config_entries — just enough for the unique_id
-    collision check config_flow.py relies on."""
+    """Test double for hass.config_entries — the unique_id collision check
+    config_flow.py relies on, plus a minimal entity-platform forward/unload
+    so custom_components.ha_mqtt_bridge.sensor's async_setup_entry can be
+    driven the same way real HA drives it
+    (hass.config_entries.async_forward_entry_setups)."""
 
-    def __init__(self) -> None:
+    def __init__(self, hass: Any = None) -> None:
+        self._hass = hass
         self.entries: list[ConfigEntry] = []
+        self._platform_entities: dict[tuple[str, str], list[Any]] = {}
 
     def async_entries(self, domain: str | None = None) -> list[ConfigEntry]:
         return list(self.entries)
+
+    async def async_forward_entry_setups(self, entry: ConfigEntry, platforms: Iterable[str]) -> None:
+        for platform in platforms:
+            module = importlib.import_module(f"custom_components.ha_mqtt_bridge.{platform}")
+            key = (entry.entry_id, platform)
+            self._platform_entities.setdefault(key, [])
+            await module.async_setup_entry(self._hass, entry, self._make_add_entities(key))
+
+    async def async_unload_platforms(self, entry: ConfigEntry, platforms: Iterable[str]) -> bool:
+        for platform in platforms:
+            key = (entry.entry_id, platform)
+            for entity in self._platform_entities.pop(key, []):
+                await entity.async_will_remove_from_hass()
+                if entity.entity_id is not None and self._hass is not None:
+                    self._hass.states.async_remove(entity.entity_id)
+        return True
+
+    def _make_add_entities(self, key: tuple[str, str]):
+        def _add_entities(new_entities: Iterable[Any], update_before_add: bool = False) -> None:
+            for entity in new_entities:
+                entity.hass = self._hass
+                entity.entity_id = f"{key[1]}.{_slugify_entity_id(entity.unique_id)}"
+                self._platform_entities[key].append(entity)
+
+        return _add_entities
+
+
+def _slugify_entity_id(value: str | None) -> str:
+    if not value:
+        return "unknown"
+    return "".join(c.lower() if c.isalnum() else "_" for c in value).strip("_")
 
 
 class ConfigFlow:

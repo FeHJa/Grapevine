@@ -9,7 +9,7 @@ coerce user_input into) directly.
 
 import asyncio
 
-from homeassistant.config_entries import ConfigEntriesRegistry, ConfigEntry
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import AbortFlow
 
@@ -17,7 +17,6 @@ from custom_components.ha_mqtt_bridge.config_flow import HaMqttBridgeConfigFlow
 from custom_components.ha_mqtt_bridge.const import (
     CONF_BRIDGE_NAME,
     CONF_ENTITIES,
-    CONF_LOCAL_DISCOVERY_PREFIX,
     CONF_SENSOR_VALUE_PREFIX,
     CONF_SHARED_DISCOVERY_PREFIX,
     CONF_TIME_PATTERN_MINUTES,
@@ -27,7 +26,6 @@ VALID_INPUT = {
     CONF_BRIDGE_NAME: "Bridge Jakob",
     CONF_ENTITIES: ["sensor.garage_temperature"],
     CONF_SHARED_DISCOVERY_PREFIX: "share/homeassistant",
-    CONF_LOCAL_DISCOVERY_PREFIX: "homeassistant/",
     CONF_SENSOR_VALUE_PREFIX: "share/jakob",
     CONF_TIME_PATTERN_MINUTES: 1,
 }
@@ -35,9 +33,7 @@ VALID_INPUT = {
 
 def _make_flow() -> HaMqttBridgeConfigFlow:
     flow = HaMqttBridgeConfigFlow()
-    hass = HomeAssistant()
-    hass.config_entries = ConfigEntriesRegistry()
-    flow.hass = hass
+    flow.hass = HomeAssistant()
     return flow
 
 
@@ -62,7 +58,6 @@ def test_valid_input_creates_entry_with_normalized_prefixes():
     assert result["data"] == {
         CONF_ENTITIES: ["sensor.garage_temperature"],
         CONF_SHARED_DISCOVERY_PREFIX: "share/homeassistant/",
-        CONF_LOCAL_DISCOVERY_PREFIX: "homeassistant",
         CONF_SENSOR_VALUE_PREFIX: "share/jakob/",
         CONF_BRIDGE_NAME: "Bridge Jakob",
     }

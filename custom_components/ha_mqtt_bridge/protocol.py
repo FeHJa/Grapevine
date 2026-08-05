@@ -29,5 +29,6 @@ class ProtocolAdapter(ABC):
 
     @abstractmethod
     async def handle_incoming_message(self, topic: str, payload: str) -> None:
-        """Handle one incoming message on a subscribed topic (e.g. forward
-        federation discovery per this adapter's protocol)."""
+        """Handle one incoming message on a subscribed topic, per this
+        adapter's protocol (e.g. LegacyDiscoveryAdapter materializes it as
+        a native entity via RemoteEntityManager, §5a)."""

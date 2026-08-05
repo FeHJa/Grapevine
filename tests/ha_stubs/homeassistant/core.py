@@ -89,8 +89,15 @@ class HomeAssistant:
         self.states = StateMachine()
         self.bus = EventBus()
         self.services = ServiceRegistry()
-        self.config_entries: Any = None
         self._tasks: set[asyncio.Task] = set()
+
+        # Imported lazily to avoid a module-load cycle (config_entries.py
+        # doesn't import core.py, so this is one-directional, but the
+        # import still has to happen after HomeAssistant exists to pass
+        # `self` in).
+        from .config_entries import ConfigEntriesRegistry
+
+        self.config_entries = ConfigEntriesRegistry(self)
 
     def async_create_background_task(
         self, target, name: str | None = None, eager_start: bool = True

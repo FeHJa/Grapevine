@@ -108,8 +108,10 @@ def parse_federation_topic(topic: str, shared_discovery_prefix: str) -> tuple[st
 
 
 def is_own_message(payload_data: dict, slug_bridge_name: str) -> bool:
-    """PROTOCOL.md §5 loop guard — preserve exactly, other instances rely
-    on this bridge_id/unique_id prefix convention to avoid forwarding loops."""
+    """PROTOCOL.md §5 loop guard — preserve exactly. Other instances rely
+    on this bridge_id/unique_id prefix convention to avoid re-forwarding
+    your own messages back to you; this instance relies on it too, to
+    avoid materializing its own echoed messages as entities (§5a)."""
     if payload_data.get("bridge_id") == slug_bridge_name:
         return True
     unique_id = payload_data.get("unique_id") or ""

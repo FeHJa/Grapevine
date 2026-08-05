@@ -11,16 +11,17 @@ import re
 
 DOMAIN = "ha_mqtt_bridge"
 
-# Config entry keys (PROTOCOL.md §1)
+# Config entry keys (PROTOCOL.md §1). local_discovery_prefix is
+# deliberately absent -- it existed only to support forwarding into HA's
+# local MQTT Discovery root, which Phase 1b (§5a) replaced with native
+# entity creation. See MIGRATION_PLAN.md Decision 6.
 CONF_ENTITIES = "entities"
 CONF_SHARED_DISCOVERY_PREFIX = "shared_discovery_prefix"
-CONF_LOCAL_DISCOVERY_PREFIX = "local_discovery_prefix"
 CONF_SENSOR_VALUE_PREFIX = "sensor_value_prefix"
 CONF_BRIDGE_NAME = "bridge_name"
 CONF_TIME_PATTERN_MINUTES = "time_pattern_minutes"
 
 DEFAULT_SHARED_DISCOVERY_PREFIX = "share/homeassistant/"
-DEFAULT_LOCAL_DISCOVERY_PREFIX = "homeassistant"
 DEFAULT_SENSOR_VALUE_PREFIX = "share/jakob/"
 DEFAULT_BRIDGE_NAME = "Bridge Jakob"
 DEFAULT_TIME_PATTERN_MINUTES = 1

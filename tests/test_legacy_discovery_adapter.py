@@ -1,6 +1,9 @@
 """LegacyDiscoveryAdapter tests against the fake homeassistant.components.mqtt
-in tests/ha_stubs — exercises publish/forward/loop-guard through the real
-mqtt_io.py wrapper, not just discovery.py's pure functions directly.
+in tests/ha_stubs — exercises publish/loop-guard through the real mqtt_io.py
+wrapper, not just discovery.py's pure functions directly. Incoming-message
+handling (§5a) is tested here only up to "did the loop guard let it through
+and get handed to the entity manager" — RemoteEntityManager's own behavior
+(entity creation/update) is covered in test_remote_entity_manager.py.
 """
 
 import asyncio
@@ -14,22 +17,28 @@ from custom_components.ha_mqtt_bridge import mqtt_io
 from custom_components.ha_mqtt_bridge.adapters.legacy_discovery import LegacyDiscoveryAdapter
 from custom_components.ha_mqtt_bridge.const import (
     CONF_BRIDGE_NAME,
-    CONF_LOCAL_DISCOVERY_PREFIX,
     CONF_SENSOR_VALUE_PREFIX,
     CONF_SHARED_DISCOVERY_PREFIX,
 )
 
 
-def _make_adapter(hass: HomeAssistant) -> LegacyDiscoveryAdapter:
+class RecordingEntityManager:
+    def __init__(self) -> None:
+        self.handled: list[dict] = []
+
+    async def async_handle_discovery(self, payload_data: dict) -> None:
+        self.handled.append(payload_data)
+
+
+def _make_adapter(hass: HomeAssistant, manager: RecordingEntityManager) -> LegacyDiscoveryAdapter:
     entry = ConfigEntry(
         data={
             CONF_SHARED_DISCOVERY_PREFIX: "share/homeassistant/",
-            CONF_LOCAL_DISCOVERY_PREFIX: "homeassistant",
             CONF_SENSOR_VALUE_PREFIX: "share/jakob/",
             CONF_BRIDGE_NAME: "Bridge Jakob",
         }
     )
-    return LegacyDiscoveryAdapter(hass, entry)
+    return LegacyDiscoveryAdapter(hass, entry, manager)
 
 
 def _run(coro):
@@ -45,7 +54,7 @@ def _published(hass: HomeAssistant) -> list[tuple[str, str, bool]]:
 
 def test_publish_own_entity_publishes_discovery_and_state_retained():
     hass = HomeAssistant()
-    adapter = _make_adapter(hass)
+    adapter = _make_adapter(hass, RecordingEntityManager())
     state = State("sensor.garage_temperature", "21.5", {"friendly_name": "Garage Temperature"})
 
     _run(adapter.publish_own_entity("sensor.garage_temperature", state))
@@ -76,9 +85,9 @@ def test_publish_own_entity_publishes_discovery_and_state_retained():
     assert state_retain is True
 
 
-def test_publish_own_entity_uses_shared_discovery_prefix_for_topic_not_local():
+def test_publish_own_entity_uses_shared_discovery_prefix_for_topic():
     hass = HomeAssistant()
-    adapter = _make_adapter(hass)
+    adapter = _make_adapter(hass, RecordingEntityManager())
     state = State("sensor.x", "1", {})
 
     _run(adapter.publish_own_entity("sensor.x", state))
@@ -92,16 +101,17 @@ def test_publish_own_entity_uses_shared_discovery_prefix_for_topic_not_local():
 
 def test_topics_to_subscribe_uses_configured_shared_prefix():
     hass = HomeAssistant()
-    adapter = _make_adapter(hass)
+    adapter = _make_adapter(hass, RecordingEntityManager())
     assert adapter.topics_to_subscribe() == ["share/homeassistant/+/+/config"]
 
 
-# --- handle_incoming_message: forwarding + loop guard (§5) ---
+# --- handle_incoming_message: loop guard + dispatch to entity manager (§5/§5a) ---
 
 
-def test_forwards_foreign_bridge_discovery_verbatim():
+def test_hands_foreign_bridge_discovery_to_entity_manager():
     hass = HomeAssistant()
-    adapter = _make_adapter(hass)
+    manager = RecordingEntityManager()
+    adapter = _make_adapter(hass, manager)
     raw_payload = '{"bridge_id": "other_bridge", "unique_id": "other_bridge::sensor.y", "extra": 1}'
 
     _run(
@@ -110,56 +120,62 @@ def test_forwards_foreign_bridge_discovery_verbatim():
         )
     )
 
-    published = _published(hass)
-    assert published == [
-        ("homeassistant/sensor/garage_humidity/config", raw_payload, True)
+    assert manager.handled == [
+        {"bridge_id": "other_bridge", "unique_id": "other_bridge::sensor.y", "extra": 1}
     ]
+    # §5a: nothing is forwarded/published locally anymore.
+    assert _published(hass) == []
 
 
-def test_does_not_forward_own_message_by_bridge_id():
+def test_does_not_hand_own_message_by_bridge_id_to_entity_manager():
     hass = HomeAssistant()
-    adapter = _make_adapter(hass)
+    manager = RecordingEntityManager()
+    adapter = _make_adapter(hass, manager)
     own_payload = json.dumps({"bridge_id": "bridge_jakob", "unique_id": "bridge_jakob::sensor.x"})
 
     _run(adapter.handle_incoming_message("share/homeassistant/sensor/x/config", own_payload))
 
-    assert _published(hass) == []
+    assert manager.handled == []
 
 
-def test_does_not_forward_own_message_by_unique_id_prefix():
+def test_does_not_hand_own_message_by_unique_id_prefix_to_entity_manager():
     hass = HomeAssistant()
-    adapter = _make_adapter(hass)
+    manager = RecordingEntityManager()
+    adapter = _make_adapter(hass, manager)
     own_payload = json.dumps({"unique_id": "bridge_jakob.sensor.x"})
 
     _run(adapter.handle_incoming_message("share/homeassistant/sensor/x/config", own_payload))
 
-    assert _published(hass) == []
+    assert manager.handled == []
 
 
 def test_ignores_non_json_payload_without_raising():
     hass = HomeAssistant()
-    adapter = _make_adapter(hass)
+    manager = RecordingEntityManager()
+    adapter = _make_adapter(hass, manager)
 
     _run(adapter.handle_incoming_message("share/homeassistant/sensor/x/config", "not json"))
 
-    assert _published(hass) == []
+    assert manager.handled == []
 
 
 def test_ignores_message_on_unmatched_topic_shape():
     hass = HomeAssistant()
-    adapter = _make_adapter(hass)
+    manager = RecordingEntityManager()
+    adapter = _make_adapter(hass, manager)
 
     _run(adapter.handle_incoming_message("some/other/topic", '{"bridge_id": "x"}'))
 
-    assert _published(hass) == []
+    assert manager.handled == []
 
 
 # --- end-to-end through mqtt_io subscribe + fake broker delivery ---
 
 
-def test_subscribed_topic_delivers_to_handler_and_forwards():
+def test_subscribed_topic_delivers_to_handler_and_reaches_entity_manager():
     hass = HomeAssistant()
-    adapter = _make_adapter(hass)
+    manager = RecordingEntityManager()
+    adapter = _make_adapter(hass, manager)
 
     async def scenario():
         for topic in adapter.topics_to_subscribe():
@@ -169,10 +185,9 @@ def test_subscribed_topic_delivers_to_handler_and_forwards():
         await mqtt.async_fire_mqtt_message(
             hass, "share/homeassistant/sensor/garage_humidity/config", payload
         )
-        return payload
 
-    payload = _run(scenario())
+    _run(scenario())
 
-    assert _published(hass) == [
-        ("homeassistant/sensor/garage_humidity/config", payload, True)
+    assert manager.handled == [
+        {"bridge_id": "other_bridge", "unique_id": "other_bridge::sensor.y"}
     ]

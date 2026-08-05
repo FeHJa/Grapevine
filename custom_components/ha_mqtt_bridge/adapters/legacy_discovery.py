@@ -2,7 +2,10 @@
 
 Implements the MQTT-Discovery-emulation protocol reverse-engineered in
 PROTOCOL.md §2-§5: own-entity discovery/state publish, federation
-subscribe + verbatim forwarding, and the loop-prevention guard.
+subscribe, and the loop-prevention guard. Incoming messages that pass the
+loop guard are handed to a RemoteEntityManager, which materializes them as
+native entities rather than forwarding them (§5a) — see
+MIGRATION_PLAN.md's Phase 1b for why.
 """
 
 from __future__ import annotations
@@ -15,12 +18,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, State
 
 from .. import mqtt_io
-from ..const import (
-    CONF_BRIDGE_NAME,
-    CONF_LOCAL_DISCOVERY_PREFIX,
-    CONF_SENSOR_VALUE_PREFIX,
-    CONF_SHARED_DISCOVERY_PREFIX,
-)
+from ..const import CONF_BRIDGE_NAME, CONF_SENSOR_VALUE_PREFIX, CONF_SHARED_DISCOVERY_PREFIX
 from ..discovery import (
     build_discovery_payload,
     is_own_message,
@@ -29,15 +27,18 @@ from ..discovery import (
     slugify_bridge_name,
 )
 from ..protocol import ProtocolAdapter
+from ..remote_entity_manager import RemoteEntityManager
 
 _LOGGER = logging.getLogger(__name__)
 
 
 class LegacyDiscoveryAdapter(ProtocolAdapter):
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+    def __init__(
+        self, hass: HomeAssistant, entry: ConfigEntry, remote_entity_manager: RemoteEntityManager
+    ) -> None:
         self._hass = hass
+        self._remote_entity_manager = remote_entity_manager
         self._shared_discovery_prefix = entry.data[CONF_SHARED_DISCOVERY_PREFIX]
-        self._local_discovery_prefix = entry.data[CONF_LOCAL_DISCOVERY_PREFIX]
         self._sensor_value_prefix = entry.data[CONF_SENSOR_VALUE_PREFIX]
         self._bridge_name = entry.data[CONF_BRIDGE_NAME]
         self._slug_bridge_name = slugify_bridge_name(self._bridge_name)
@@ -66,11 +67,12 @@ class LegacyDiscoveryAdapter(ProtocolAdapter):
         await mqtt_io.async_publish(self._hass, state_topic, state.state, retain=True)
 
     async def handle_incoming_message(self, topic: str, payload: str) -> None:
-        parsed = parse_federation_topic(topic, self._shared_discovery_prefix)
-        if parsed is None:
+        # Topic-shape validation only (§2) -- component/object_id aren't
+        # needed downstream since §5a, RemoteEntityManager keys everything
+        # off the payload's own unique_id.
+        if parse_federation_topic(topic, self._shared_discovery_prefix) is None:
             _LOGGER.debug("Ignoring message on unexpected topic shape: %s", topic)
             return
-        component, object_id = parsed
 
         try:
             payload_data = json.loads(payload)
@@ -81,10 +83,7 @@ class LegacyDiscoveryAdapter(ProtocolAdapter):
         if is_own_message(payload_data, self._slug_bridge_name):
             return
 
-        forward_topic = f"{self._local_discovery_prefix}/{component}/{object_id}/config"
-        # Verbatim byte passthrough (PROTOCOL.md §5) — forward exactly what
-        # was received, never a re-serialization of payload_data.
-        await mqtt_io.async_publish(self._hass, forward_topic, payload, retain=True)
+        await self._remote_entity_manager.async_handle_discovery(payload_data)
 
     async def async_handle_mqtt_message(self, msg: mqtt.ReceiveMessage) -> None:
         await self.handle_incoming_message(msg.topic, msg.payload)

@@ -17,13 +17,13 @@ from custom_components.ha_mqtt_bridge.const import (
     ATTR_CONFIG_ENTRY_ID,
     CONF_BRIDGE_NAME,
     CONF_ENTITIES,
-    CONF_LOCAL_DISCOVERY_PREFIX,
     CONF_SENSOR_VALUE_PREFIX,
     CONF_SHARED_DISCOVERY_PREFIX,
     CONF_TIME_PATTERN_MINUTES,
     DOMAIN,
     SERVICE_REPUBLISH,
 )
+from custom_components.ha_mqtt_bridge.remote_entity_manager import RemoteEntityManager
 from custom_components.ha_mqtt_bridge.scheduler import BridgeScheduler
 
 
@@ -40,7 +40,6 @@ def _make_entry(entry_id: str, bridge_name: str, entities: list[str]) -> ConfigE
         data={
             CONF_ENTITIES: entities,
             CONF_SHARED_DISCOVERY_PREFIX: "share/homeassistant/",
-            CONF_LOCAL_DISCOVERY_PREFIX: "homeassistant",
             CONF_SENSOR_VALUE_PREFIX: "share/jakob/",
             CONF_BRIDGE_NAME: bridge_name,
         },
@@ -68,7 +67,8 @@ def test_setup_entry_wires_scheduler_onto_runtime_data():
     result = _run(ha_mqtt_bridge.async_setup_entry(hass, entry))
 
     assert result is True
-    assert isinstance(entry.runtime_data, BridgeScheduler)
+    assert isinstance(entry.runtime_data.scheduler, BridgeScheduler)
+    assert isinstance(entry.runtime_data.remote_entity_manager, RemoteEntityManager)
 
 
 def test_setup_entry_registers_service_once():
@@ -95,7 +95,7 @@ def test_republish_service_dispatches_to_correct_entry(monkeypatch):
         # those before exercising the service call so they don't muddy the
         # published-messages assertion below.
         for entry in (entry_a, entry_b):
-            pending = list(entry.runtime_data._tasks)
+            pending = list(entry.runtime_data.scheduler._tasks)
             if pending:
                 await asyncio.gather(*pending, return_exceptions=True)
 
@@ -104,7 +104,7 @@ def test_republish_service_dispatches_to_correct_entry(monkeypatch):
         await hass.services.async_call(
             DOMAIN, SERVICE_REPUBLISH, {ATTR_CONFIG_ENTRY_ID: "entry_a"}
         )
-        pending = list(entry_a.runtime_data._tasks)
+        pending = list(entry_a.runtime_data.scheduler._tasks)
         await asyncio.gather(*pending, return_exceptions=True)
 
     _run(scenario())

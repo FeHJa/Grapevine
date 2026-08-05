@@ -12,12 +12,10 @@ from homeassistant.helpers import selector
 from .const import (
     CONF_BRIDGE_NAME,
     CONF_ENTITIES,
-    CONF_LOCAL_DISCOVERY_PREFIX,
     CONF_SENSOR_VALUE_PREFIX,
     CONF_SHARED_DISCOVERY_PREFIX,
     CONF_TIME_PATTERN_MINUTES,
     DEFAULT_BRIDGE_NAME,
-    DEFAULT_LOCAL_DISCOVERY_PREFIX,
     DEFAULT_SENSOR_VALUE_PREFIX,
     DEFAULT_SHARED_DISCOVERY_PREFIX,
     DEFAULT_TIME_PATTERN_MINUTES,
@@ -33,9 +31,6 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
         ),
         vol.Required(
             CONF_SHARED_DISCOVERY_PREFIX, default=DEFAULT_SHARED_DISCOVERY_PREFIX
-        ): str,
-        vol.Required(
-            CONF_LOCAL_DISCOVERY_PREFIX, default=DEFAULT_LOCAL_DISCOVERY_PREFIX
         ): str,
         vol.Required(CONF_SENSOR_VALUE_PREFIX, default=DEFAULT_SENSOR_VALUE_PREFIX): str,
         vol.Required(
@@ -68,7 +63,6 @@ class HaMqttBridgeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     CONF_SHARED_DISCOVERY_PREFIX: normalize_prefix(
                         user_input[CONF_SHARED_DISCOVERY_PREFIX]
                     ),
-                    CONF_LOCAL_DISCOVERY_PREFIX: user_input[CONF_LOCAL_DISCOVERY_PREFIX].rstrip("/"),
                     CONF_SENSOR_VALUE_PREFIX: normalize_prefix(
                         user_input[CONF_SENSOR_VALUE_PREFIX]
                     ),

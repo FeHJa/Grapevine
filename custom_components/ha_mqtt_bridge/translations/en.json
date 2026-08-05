@@ -7,7 +7,6 @@
           "bridge_name": "Bridge name",
           "entities": "Entities to bridge",
           "shared_discovery_prefix": "Shared discovery prefix",
-          "local_discovery_prefix": "Local discovery prefix",
           "sensor_value_prefix": "Sensor value prefix",
           "time_pattern_minutes": "Full republish interval (minutes)"
         }
