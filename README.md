@@ -37,7 +37,19 @@ Don't point it at production yet.
 
 ## Installation
 
-Not yet published to HACS. To try it manually:
+### Via HACS (custom repository)
+
+Not in HACS's default store yet, so it has to be added manually as a
+custom repository:
+
+1. HACS → the "⋮" menu (top right) → **Custom repositories**.
+2. Repository: `https://github.com/FeHJa/HA-MQTT-Bridge`, category:
+   **Integration**.
+3. Install "HA MQTT Bridge" from HACS, then restart Home Assistant.
+4. Settings → Devices & Services → Add Integration → search for
+   "HA MQTT Bridge".
+
+### Manually
 
 1. Copy `custom_components/ha_mqtt_bridge/` into your Home Assistant
    config's `custom_components/` directory.
@@ -76,3 +88,7 @@ Tests run against a small hand-written fake of Home Assistant
 (`tests/ha_stubs/`), not the real `homeassistant` package — see that
 package's docstring and `requirements_test.txt` for why, and what that
 does and doesn't validate.
+
+## License
+
+[MIT](LICENSE)
