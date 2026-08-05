@@ -61,6 +61,11 @@ custom repository:
 
 Requires Home Assistant 2026.7 or newer and a configured MQTT integration.
 
+The integration ships its own icon (`custom_components/grapevine/brand/`),
+picked up automatically by Home Assistant's local brand-icon mechanism
+(2026.3+) — no separate submission to the `home-assistant/brands` repo
+needed.
+
 ## Configuration
 
 Set up via the UI config flow:
