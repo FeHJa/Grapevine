@@ -1,0 +1,33 @@
+"""Protocol adapter seam (PROTOCOL.md §8 / MIGRATION_PLAN.md).
+
+Phase 1 has exactly one implementation, LegacyDiscoveryAdapter. This
+interface exists so a future manifest-based adapter (Phase 3, gated on
+cross-instance coordination, not implemented here) is additive rather
+than a rewrite of scheduler.py / __init__.py's wiring.
+"""
+
+from __future__ import annotations
+
+from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from homeassistant.core import State
+
+
+class ProtocolAdapter(ABC):
+    """A wire-protocol generation: how this bridge speaks to its peers."""
+
+    @abstractmethod
+    def topics_to_subscribe(self) -> list[str]:
+        """MQTT topic filters this adapter needs subscribed for incoming
+        federation messages."""
+
+    @abstractmethod
+    async def publish_own_entity(self, entity_id: str, state: State) -> None:
+        """Publish this bridge's own discovery + state for one entity."""
+
+    @abstractmethod
+    async def handle_incoming_message(self, topic: str, payload: str) -> None:
+        """Handle one incoming message on a subscribed topic (e.g. forward
+        federation discovery per this adapter's protocol)."""
