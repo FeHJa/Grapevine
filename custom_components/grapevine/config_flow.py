@@ -40,7 +40,7 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
 )
 
 
-class HaMqttBridgeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+class GrapevineConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> config_entries.ConfigFlowResult:

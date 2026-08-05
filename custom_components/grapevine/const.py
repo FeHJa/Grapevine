@@ -1,4 +1,5 @@
-"""Constants for the HA MQTT Bridge integration.
+"""Constants for Grapevine — peer-to-peer entity federation for Home
+Assistant.
 
 Values here are the wire-protocol contract reverse-engineered in
 PROTOCOL.md — keep this module in sync with that document, not the other
@@ -9,7 +10,7 @@ from __future__ import annotations
 
 import re
 
-DOMAIN = "ha_mqtt_bridge"
+DOMAIN = "grapevine"
 
 # Config entry keys (PROTOCOL.md §1). local_discovery_prefix is
 # deliberately absent -- it existed only to support forwarding into HA's

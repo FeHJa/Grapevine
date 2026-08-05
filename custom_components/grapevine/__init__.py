@@ -1,7 +1,8 @@
-"""HA MQTT Bridge — native integration port of the MQTT bridge blueprint.
+"""Grapevine — peer-to-peer entity federation for Home Assistant.
 
-See PROTOCOL.md for the wire-protocol contract this must reproduce, and
-MIGRATION_PLAN.md for the phased rollout this is Phase 1(b) of.
+A native integration port of the MQTT bridge blueprint. See PROTOCOL.md
+for the wire-protocol contract this must reproduce, and MIGRATION_PLAN.md
+for the phased rollout this is Phase 1(b) of.
 """
 
 from __future__ import annotations
@@ -26,7 +27,7 @@ SERVICE_REPUBLISH_SCHEMA = vol.Schema({vol.Required(ATTR_CONFIG_ENTRY_ID): cv.st
 
 
 @dataclass
-class HaMqttBridgeData:
+class GrapevineRuntimeData:
     scheduler: BridgeScheduler
     remote_entity_manager: RemoteEntityManager
 
@@ -38,7 +39,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     remote_entity_manager = RemoteEntityManager(hass, entry)
     adapter = LegacyDiscoveryAdapter(hass, entry, remote_entity_manager)
     scheduler = BridgeScheduler(hass, entry, adapter)
-    entry.runtime_data = HaMqttBridgeData(
+    entry.runtime_data = GrapevineRuntimeData(
         scheduler=scheduler, remote_entity_manager=remote_entity_manager
     )
     entry.async_on_unload(remote_entity_manager.async_unload)
@@ -85,7 +86,7 @@ def _make_republish_service_handler(hass: HomeAssistant):
         handlers = hass.data.get(DOMAIN, {}).get("republish_handlers", {})
         handler = handlers.get(entry_id)
         if handler is None:
-            raise ServiceValidationError(f"No HA MQTT Bridge instance for config entry {entry_id}")
+            raise ServiceValidationError(f"No Grapevine instance for config entry {entry_id}")
         handler()
 
     return _async_handle_republish

@@ -4,4 +4,4 @@ republish:
       required: true
       selector:
         config_entry:
-          integration: ha_mqtt_bridge
+          integration: grapevine

@@ -13,8 +13,8 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import AbortFlow
 
-from custom_components.ha_mqtt_bridge.config_flow import HaMqttBridgeConfigFlow
-from custom_components.ha_mqtt_bridge.const import (
+from custom_components.grapevine.config_flow import GrapevineConfigFlow
+from custom_components.grapevine.const import (
     CONF_BRIDGE_NAME,
     CONF_ENTITIES,
     CONF_SENSOR_VALUE_PREFIX,
@@ -31,8 +31,8 @@ VALID_INPUT = {
 }
 
 
-def _make_flow() -> HaMqttBridgeConfigFlow:
-    flow = HaMqttBridgeConfigFlow()
+def _make_flow() -> GrapevineConfigFlow:
+    flow = GrapevineConfigFlow()
     flow.hass = HomeAssistant()
     return flow
 

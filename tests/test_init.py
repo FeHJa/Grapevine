@@ -11,9 +11,9 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady, ServiceValidationError
 
-from custom_components import ha_mqtt_bridge
-from custom_components.ha_mqtt_bridge import scheduler as scheduler_module
-from custom_components.ha_mqtt_bridge.const import (
+from custom_components import grapevine
+from custom_components.grapevine import scheduler as scheduler_module
+from custom_components.grapevine.const import (
     ATTR_CONFIG_ENTRY_ID,
     CONF_BRIDGE_NAME,
     CONF_ENTITIES,
@@ -23,8 +23,8 @@ from custom_components.ha_mqtt_bridge.const import (
     DOMAIN,
     SERVICE_REPUBLISH,
 )
-from custom_components.ha_mqtt_bridge.remote_entity_manager import RemoteEntityManager
-from custom_components.ha_mqtt_bridge.scheduler import BridgeScheduler
+from custom_components.grapevine.remote_entity_manager import RemoteEntityManager
+from custom_components.grapevine.scheduler import BridgeScheduler
 
 
 @pytest.fixture(autouse=True)
@@ -57,14 +57,14 @@ def test_setup_entry_raises_config_entry_not_ready_when_mqtt_not_ready():
     entry = _make_entry("entry1", "Bridge Jakob", ["sensor.a"])
 
     with pytest.raises(ConfigEntryNotReady):
-        _run(ha_mqtt_bridge.async_setup_entry(hass, entry))
+        _run(grapevine.async_setup_entry(hass, entry))
 
 
 def test_setup_entry_wires_scheduler_onto_runtime_data():
     hass = HomeAssistant()
     entry = _make_entry("entry1", "Bridge Jakob", ["sensor.a"])
 
-    result = _run(ha_mqtt_bridge.async_setup_entry(hass, entry))
+    result = _run(grapevine.async_setup_entry(hass, entry))
 
     assert result is True
     assert isinstance(entry.runtime_data.scheduler, BridgeScheduler)
@@ -75,7 +75,7 @@ def test_setup_entry_registers_service_once():
     hass = HomeAssistant()
     entry = _make_entry("entry1", "Bridge Jakob", ["sensor.a"])
 
-    _run(ha_mqtt_bridge.async_setup_entry(hass, entry))
+    _run(grapevine.async_setup_entry(hass, entry))
 
     assert hass.services.has_service(DOMAIN, SERVICE_REPUBLISH)
 
@@ -88,8 +88,8 @@ def test_republish_service_dispatches_to_correct_entry(monkeypatch):
     hass.states.async_set("sensor.b", "2")
 
     async def scenario():
-        await ha_mqtt_bridge.async_setup_entry(hass, entry_a)
-        await ha_mqtt_bridge.async_setup_entry(hass, entry_b)
+        await grapevine.async_setup_entry(hass, entry_a)
+        await grapevine.async_setup_entry(hass, entry_b)
 
         # Both entries schedule an initial resync republish on setup; drain
         # those before exercising the service call so they don't muddy the
@@ -121,7 +121,7 @@ def test_republish_service_dispatches_to_correct_entry(monkeypatch):
 def test_republish_service_raises_for_unknown_entry_id():
     hass = HomeAssistant()
     entry = _make_entry("entry1", "Bridge Jakob", ["sensor.a"])
-    _run(ha_mqtt_bridge.async_setup_entry(hass, entry))
+    _run(grapevine.async_setup_entry(hass, entry))
 
     async def scenario():
         with pytest.raises(ServiceValidationError):
@@ -137,10 +137,10 @@ def test_unload_entry_removes_its_republish_handler():
     entry = _make_entry("entry1", "Bridge Jakob", ["sensor.a"])
 
     async def scenario():
-        await ha_mqtt_bridge.async_setup_entry(hass, entry)
+        await grapevine.async_setup_entry(hass, entry)
         assert "entry1" in hass.data[DOMAIN]["republish_handlers"]
 
-        await ha_mqtt_bridge.async_unload_entry(hass, entry)
+        await grapevine.async_unload_entry(hass, entry)
         await entry.async_unload()
 
         assert "entry1" not in hass.data[DOMAIN]["republish_handlers"]

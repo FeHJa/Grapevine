@@ -1,4 +1,6 @@
-# HA MQTT Bridge
+# Grapevine
+
+**Peer-to-peer entity federation for Home Assistant.**
 
 **Version: 0.1** — pre-release, not yet tested against a real broker.
 
@@ -14,10 +16,10 @@ interoperates with instances still running the original blueprint.
   in an MQTT-Discovery-style JSON payload, so other Home Assistant
   instances watching that prefix can pick them up.
 - Subscribes to that same shared prefix and, for entities published by
-  *other* bridge instances, creates and maintains native sensor entities
-  directly in this Home Assistant install — no writes into the local MQTT
-  Discovery root, and no orphaned entities left behind: removing the
-  integration removes them too.
+  *other* Grapevine instances, creates and maintains native sensor
+  entities directly in this Home Assistant install — no writes into the
+  local MQTT Discovery root, and no orphaned entities left behind:
+  removing the integration removes them too.
 - Refreshes everything periodically (configurable interval) so retained
   messages stay current after a restart, plus an on-demand `republish`
   service for the same thing on demand.
@@ -43,19 +45,19 @@ Not in HACS's default store yet, so it has to be added manually as a
 custom repository:
 
 1. HACS → the "⋮" menu (top right) → **Custom repositories**.
-2. Repository: `https://github.com/FeHJa/HA-MQTT-Bridge`, category:
+2. Repository: `https://github.com/FeHJa/Grapevine`, category:
    **Integration**.
-3. Install "HA MQTT Bridge" from HACS, then restart Home Assistant.
+3. Install "Grapevine" from HACS, then restart Home Assistant.
 4. Settings → Devices & Services → Add Integration → search for
-   "HA MQTT Bridge".
+   "Grapevine".
 
 ### Manually
 
-1. Copy `custom_components/ha_mqtt_bridge/` into your Home Assistant
-   config's `custom_components/` directory.
+1. Copy `custom_components/grapevine/` into your Home Assistant config's
+   `custom_components/` directory.
 2. Restart Home Assistant.
 3. Settings → Devices & Services → Add Integration → search for
-   "HA MQTT Bridge".
+   "Grapevine".
 
 Requires Home Assistant 2026.7 or newer and a configured MQTT integration.
 
@@ -73,7 +75,7 @@ Set up via the UI config flow:
 
 ## Services
 
-`ha_mqtt_bridge.republish` — forces an immediate full discovery + state
+`grapevine.republish` — forces an immediate full discovery + state
 republish for a given bridge instance, without waiting for the next
 scheduled interval.
 

@@ -1,5 +1,5 @@
 """Minimal fake of homeassistant.components.sensor.SensorEntity — just the
-attributes/methods custom_components/ha_mqtt_bridge/sensor.py uses.
+attributes/methods custom_components/grapevine/sensor.py uses.
 """
 
 from __future__ import annotations
