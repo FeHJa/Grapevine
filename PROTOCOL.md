@@ -137,15 +137,34 @@ redesign in the first place — for the receiving side, today, without waiting f
 
 **What this does *not* fix:** neither of the two §2 known limitations (object_id/domain
 collision, hardcoded `sensor` component) — both originate on the far side, in what the
-*sending* bridge publishes, before this instance ever sees the message. Also unresolved:
-cleanup of *this* bridge's own entities as seen by the *other* two instances (§3's
-outbound side) — that still requires this bridge to depublish its own retained messages
-on removal, independent of this amendment.
+*sending* bridge publishes, before this instance ever sees the message.
 
 `local_discovery_prefix` remains listed in §1 as a historical note (it's still what the
 *blueprint* does, and still relevant if you're comparing against another instance running
 the blueprint unmodified) but is no longer part of this integration's config — see
 MIGRATION_PLAN.md's Phase 1b for the implementation.
+
+## 5b. Amendment: depublishing own entities (removal signal)
+
+**Status: implemented (issue #7).** Closes the gap §5a left open: cleanup of *this*
+bridge's own entities as seen by *other* instances (§3's outbound side).
+
+When an entity stops being bridged — dropped from the config entry's entity list via
+reconfigure, or the whole config entry removed — this instance publishes an **empty
+retained payload** to that entity's own discovery topic
+(`{shared_discovery_prefix}sensor/{object_id}/config`) and state topic
+(`{sensor_value_prefix}sensor/{object_id}`). An empty retained payload on a discovery
+config topic is the standard MQTT Discovery removal convention, so this requires no
+protocol negotiation: Home Assistant's own `mqtt` integration already treats it as
+"remove this entity," which means **blueprint-based receivers get this for free** —
+their forwarding step relays the empty payload into their local discovery root exactly
+like any other payload, and their local `mqtt` integration does the rest.
+
+Grapevine-based receivers materialize entities natively instead (§5a), so they don't go
+through the `mqtt` integration's removal handling — `RemoteEntityManager` is taught to
+recognize an empty payload on a topic it previously saw a real payload on (correlated by
+*topic*, not `unique_id`, since an empty payload carries no JSON to read) and remove the
+native entity it created for it.
 
 ## 6. Timing / triggers
 

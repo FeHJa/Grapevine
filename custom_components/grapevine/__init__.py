@@ -17,7 +17,7 @@ from homeassistant.helpers import config_validation as cv
 
 from . import mqtt_io
 from .adapters.legacy_discovery import LegacyDiscoveryAdapter
-from .const import ATTR_CONFIG_ENTRY_ID, DOMAIN, SERVICE_REPUBLISH
+from .const import ATTR_CONFIG_ENTRY_ID, CONF_ENTITIES, DOMAIN, SERVICE_REPUBLISH
 from .remote_entity_manager import RemoteEntityManager
 from .scheduler import BridgeScheduler
 
@@ -30,6 +30,7 @@ SERVICE_REPUBLISH_SCHEMA = vol.Schema({vol.Required(ATTR_CONFIG_ENTRY_ID): cv.st
 class GrapevineRuntimeData:
     scheduler: BridgeScheduler
     remote_entity_manager: RemoteEntityManager
+    protocol_adapter: LegacyDiscoveryAdapter
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -40,9 +41,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     adapter = LegacyDiscoveryAdapter(hass, entry, remote_entity_manager)
     scheduler = BridgeScheduler(hass, entry, adapter)
     entry.runtime_data = GrapevineRuntimeData(
-        scheduler=scheduler, remote_entity_manager=remote_entity_manager
+        scheduler=scheduler,
+        remote_entity_manager=remote_entity_manager,
+        protocol_adapter=adapter,
     )
     entry.async_on_unload(remote_entity_manager.async_unload)
+    # Reconfigure (data changes) and the options flow (time_pattern_minutes)
+    # both go through hass.config_entries.async_update_entry, which is what
+    # fires this -- so one listener covers picking up both kinds of change
+    # (issue #7; previously nothing reloaded the entry after either).
+    entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
 
     # Must happen before scheduler.async_setup() starts the federation MQTT
     # subscription below -- the sensor platform registers the
@@ -78,6 +86,25 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # forward-to-local-discovery approach where HA's own mqtt integration
     # owned that lifecycle.
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    # The receiving-side half of cleanup (native entities) is handled by
+    # async_unload_entry above via the platform unload, which HA calls
+    # before this. This is the sending-side half (issue #7): depublish
+    # every entity this bridge was publishing, so other instances --
+    # Grapevine or blueprint -- don't keep it around as a stale entity
+    # forever. Uses the same async_depublish_entity as reconfigure's
+    # per-entity removal.
+    runtime_data: GrapevineRuntimeData | None = entry.runtime_data
+    if runtime_data is None:
+        return
+    for entity_id in entry.data.get(CONF_ENTITIES, []):
+        await runtime_data.protocol_adapter.async_depublish_entity(entity_id)
+
+
+async def _async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 def _make_republish_service_handler(hass: HomeAssistant):

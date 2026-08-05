@@ -25,9 +25,15 @@ from custom_components.grapevine.const import (
 class RecordingEntityManager:
     def __init__(self) -> None:
         self.handled: list[dict] = []
+        self.handled_topics: list[str] = []
+        self.removed_topics: list[str] = []
 
-    async def async_handle_discovery(self, payload_data: dict) -> None:
+    async def async_handle_discovery(self, topic: str, payload_data: dict) -> None:
         self.handled.append(payload_data)
+        self.handled_topics.append(topic)
+
+    async def async_handle_removal(self, topic: str) -> None:
+        self.removed_topics.append(topic)
 
 
 def _make_adapter(hass: HomeAssistant, manager: RecordingEntityManager) -> LegacyDiscoveryAdapter:
@@ -94,6 +100,22 @@ def test_publish_own_entity_uses_shared_discovery_prefix_for_topic():
 
     discovery_topic, _, _ = _published(hass)[0]
     assert discovery_topic.startswith("share/homeassistant/")
+
+
+# --- async_depublish_entity (issue #7) ---
+
+
+def test_depublish_publishes_empty_retained_payload_to_both_topics():
+    hass = HomeAssistant()
+    adapter = _make_adapter(hass, RecordingEntityManager())
+
+    _run(adapter.async_depublish_entity("sensor.garage_temperature"))
+
+    published = _published(hass)
+    assert published == [
+        ("share/homeassistant/sensor/garage_temperature/config", "", True),
+        ("share/jakob/sensor/garage_temperature", "", True),
+    ]
 
 
 # --- topics_to_subscribe ---
@@ -167,6 +189,34 @@ def test_ignores_message_on_unmatched_topic_shape():
     _run(adapter.handle_incoming_message("some/other/topic", '{"bridge_id": "x"}'))
 
     assert manager.handled == []
+
+
+# --- empty payload = removal signal (issue #7) ---
+
+
+def test_empty_payload_routes_to_removal_by_topic():
+    hass = HomeAssistant()
+    manager = RecordingEntityManager()
+    adapter = _make_adapter(hass, manager)
+
+    _run(
+        adapter.handle_incoming_message(
+            "share/homeassistant/sensor/garage_humidity/config", ""
+        )
+    )
+
+    assert manager.removed_topics == ["share/homeassistant/sensor/garage_humidity/config"]
+    assert manager.handled == []
+
+
+def test_empty_payload_on_unmatched_topic_shape_is_not_routed_to_removal():
+    hass = HomeAssistant()
+    manager = RecordingEntityManager()
+    adapter = _make_adapter(hass, manager)
+
+    _run(adapter.handle_incoming_message("some/other/topic", ""))
+
+    assert manager.removed_topics == []
 
 
 # --- end-to-end through mqtt_io subscribe + fake broker delivery ---
