@@ -41,7 +41,7 @@ class ConfigEntry:
 class ConfigEntriesRegistry:
     """Test double for hass.config_entries — the unique_id collision check
     config_flow.py relies on, plus a minimal entity-platform forward/unload
-    so custom_components.ha_mqtt_bridge.sensor's async_setup_entry can be
+    so custom_components.grapevine.sensor's async_setup_entry can be
     driven the same way real HA drives it
     (hass.config_entries.async_forward_entry_setups)."""
 
@@ -55,7 +55,7 @@ class ConfigEntriesRegistry:
 
     async def async_forward_entry_setups(self, entry: ConfigEntry, platforms: Iterable[str]) -> None:
         for platform in platforms:
-            module = importlib.import_module(f"custom_components.ha_mqtt_bridge.{platform}")
+            module = importlib.import_module(f"custom_components.grapevine.{platform}")
             key = (entry.entry_id, platform)
             self._platform_entities.setdefault(key, [])
             await module.async_setup_entry(self._hass, entry, self._make_add_entities(key))

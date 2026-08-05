@@ -11,8 +11,8 @@ from homeassistant.components import mqtt
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
-from custom_components.ha_mqtt_bridge.const import DOMAIN
-from custom_components.ha_mqtt_bridge.remote_entity_manager import RemoteEntityManager
+from custom_components.grapevine.const import DOMAIN
+from custom_components.grapevine.remote_entity_manager import RemoteEntityManager
 
 EXAMPLE_PAYLOAD = {
     "name": "Garage Humidity",

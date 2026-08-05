@@ -2,7 +2,7 @@
   "config": {
     "step": {
       "user": {
-        "title": "Set up HA MQTT Bridge",
+        "title": "Set up Grapevine",
         "data": {
           "bridge_name": "Bridge name",
           "entities": "Entities to bridge",
@@ -27,7 +27,7 @@
       "fields": {
         "config_entry_id": {
           "name": "Bridge instance",
-          "description": "Which HA MQTT Bridge config entry to republish."
+          "description": "Which Grapevine config entry to republish."
         }
       }
     }

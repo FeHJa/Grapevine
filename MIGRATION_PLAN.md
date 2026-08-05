@@ -1,4 +1,4 @@
-# Migration Plan: Blueprint → Integration
+# Migration Plan: Blueprint → Grapevine
 
 Source blueprint: https://github.com/FeHJa/HA-Blueprint-MQTT-Bridge/blob/main/mqtt_bridge.yaml
 Wire protocol contract: `PROTOCOL.md` (authoritative for Phase 1 behavior)
@@ -6,7 +6,7 @@ Wire protocol contract: `PROTOCOL.md` (authoritative for Phase 1 behavior)
 ## Goal
 
 Replace the YAML automation blueprint with a native Home Assistant custom
-integration (`custom_components/ha_mqtt_bridge/`) that is functionally
+integration (`custom_components/grapevine/`) that is functionally
 identical on the wire — any other instance still running the blueprint, or
 another migrated instance, must interoperate without changes on its end.
 
@@ -34,7 +34,7 @@ layer. See "Target architecture" and "Phase 3" below.
 ## Target architecture
 
 ```
-custom_components/ha_mqtt_bridge/
+custom_components/grapevine/
 ├── __init__.py          # async_setup_entry / async_unload_entry, wires everything together
 ├── manifest.json         # domain, dependencies: [mqtt], config_flow: true, iot_class
 ├── const.py               # DOMAIN, CONF_* keys, defaults, sw_version, PROTOCOL_VERSION, the 8 regex patterns
@@ -178,7 +178,7 @@ moving more of them into `options` before Phase 2 locks in the flow.
      only holds if all instances actually fire on the same wall-clock
      minute, which a setup-time-anchored interval does not guarantee.
    - On-demand republish: a domain service call,
-     `ha_mqtt_bridge.republish`, targeting a config entry (via a
+     `grapevine.republish`, targeting a config entry (via a
      `config_entry_id`/device selector in `services.yaml`), doing the
      same full republish loop as the time_pattern trigger. This is the
      Phase 1 replacement for the blueprint's `force_republish_sensors`
@@ -296,7 +296,7 @@ present and unfixed, per §5a — this phase doesn't touch them.
 - `strings.json`/translations, `manifest.json` metadata for HACS
   (`hacs.json`, versioning), diagnostics platform for support requests.
 - Broaden test coverage (config flow, scheduler timing) toward CI.
-- `button` entity per config entry that calls `ha_mqtt_bridge.republish`.
+- `button` entity per config entry that calls `grapevine.republish`.
 - **Multi-entry support** (lower priority — not currently needed, but
   worth designing for): allow multiple config entries so one HA install
   can run several bridge instances (e.g. against different brokers or
@@ -350,7 +350,7 @@ subscription model:
 ## Decisions
 
 1. **On-demand full republish trigger**: `services.yaml` service call
-   `ha_mqtt_bridge.republish` in Phase 1. The Phase 2 `button` entity
+   `grapevine.republish` in Phase 1. The Phase 2 `button` entity
    calls this same service rather than duplicating the republish logic.
 2. **Minimum HA core version**: `2026.7`. `manifest.json`
    `"homeassistant"` requirement pinned accordingly; target the

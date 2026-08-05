@@ -80,7 +80,7 @@ class BridgeScheduler:
     def _schedule_publish(self, entity_id: str, state: State) -> None:
         task = self._hass.async_create_background_task(
             self._jittered_publish(entity_id, state),
-            name=f"ha_mqtt_bridge publish {entity_id}",
+            name=f"grapevine publish {entity_id}",
         )
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
