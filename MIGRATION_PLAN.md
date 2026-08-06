@@ -46,7 +46,9 @@ custom_components/grapevine/
 ├── adapters/
 │   └── legacy_discovery.py # LegacyDiscoveryAdapter(ProtocolAdapter) — Phase 1's protocol (§2-5), the only adapter that exists right now
 ├── remote_entity_manager.py # Phase 1b (§5a): create-or-update native entities from incoming federation messages, keyed by unique_id
-├── sensor.py                # Phase 1b: BridgedSensorEntity(SensorEntity) + platform setup, hands its async_add_entities to remote_entity_manager
+├── sensor.py                # Phase 1b: BridgedSensorEntity(SensorEntity); issue #12: BridgeMetadataEntities, this bridge's own diagnostic entities
+├── diagnostics.py           # issue #12: "Download Diagnostics" -- entity list + last published metadata
+├── version.py                # issue #12: reads this integration's own release version out of manifest.json
 └── strings.json / translations/en.json
 tests/
 ├── test_config_flow.py
@@ -308,7 +310,15 @@ present and unfixed, per §5a — this phase doesn't touch them.
   than left as stale entities on other instances; see `PROTOCOL.md`
   §5b/`async_depublish_entity`.
 - `strings.json`/translations, `manifest.json` metadata for HACS
-  (`hacs.json`, versioning), diagnostics platform for support requests.
+  (`hacs.json`, versioning).
+- ~~Diagnostics platform for support requests~~ **Done** (issue #12): closed
+  together with a new metadata message (`PROTOCOL.md` §9) -- each bridge
+  publishes its own protocol/integration/HA version, bridged entity count,
+  and a last-heartbeat timestamp to a dedicated topic every `time_pattern`
+  tick. Surfaced locally via three `entity_category: diagnostic` entities
+  on a new device representing "this bridge instance" (`sensor.py`'s
+  `BridgeMetadataEntities`), plus the full payload through `diagnostics.py`
+  for "Download Diagnostics".
 - Broaden test coverage (config flow, scheduler timing) toward CI.
 - `button` entity per config entry that calls `grapevine.republish`.
 - **Multi-entry support** (lower priority — not currently needed, but

@@ -93,6 +93,27 @@ def build_discovery_payload(
     return payload
 
 
+def build_metadata_payload(
+    *,
+    slug_bridge_name: str,
+    integration_version: str,
+    ha_version: str,
+    entity_count: int,
+    last_heartbeat: str,
+) -> dict:
+    """PROTOCOL.md §9: own-bridge metadata payload (issue #12) -- a
+    separate, additive side-channel from the §3 discovery payload, not a
+    replacement for it."""
+    return {
+        "protocol_version": PROTOCOL_VERSION,
+        "integration_version": integration_version,
+        "bridge_id": slug_bridge_name,
+        "ha_version": ha_version,
+        "entity_count": entity_count,
+        "last_heartbeat": last_heartbeat,
+    }
+
+
 def parse_federation_topic(topic: str, shared_discovery_prefix: str) -> tuple[str, str] | None:
     """PROTOCOL.md §2/§5: component/object_id parsed positionally, right
     after the shared prefix. Returns None if topic doesn't match the

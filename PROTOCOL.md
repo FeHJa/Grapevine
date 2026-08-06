@@ -233,3 +233,57 @@ of MQTT Discovery emulation) and the follow-list/opt-in subscription model — b
 wire-protocol changes requiring the cross-instance coordination described above. When
 Phase 3 lands, its manifest-diffing logic is expected to feed the same entity
 materialization layer §5a introduced, rather than building a second one.
+
+## 9. Metadata message (issue #12)
+
+**Status: implemented.** A small, additive side-channel alongside the §2-§5 protocol —
+each bridge periodically publishes a retained JSON message describing itself: protocol
+version, this integration's own release version, the local Home Assistant version, how
+many entities it's currently bridging, and a last-heartbeat timestamp.
+
+**Topic:** `{shared_discovery_prefix}bridge/{slug_bridge_name}/metadata`, retained.
+
+**Payload:**
+
+```json
+{
+  "protocol_version": 1,
+  "integration_version": "0.1.3",
+  "bridge_id": "bridge_jakob",
+  "ha_version": "2026.8.0",
+  "entity_count": 7,
+  "last_heartbeat": "2026-08-06T08:14:00+00:00"
+}
+```
+
+`last_heartbeat` is a plain "as of this publish" UTC timestamp, refreshed every
+publish — it carries no online/offline or staleness inference. Availability tracking is
+the feature §7 says was deliberately dropped from the original blueprint for stability,
+and stays out of scope here; a future change that wants it needs its own design pass.
+
+**Why this needs no coordination with the other two bridge instances** (unlike §8's
+Phase 3 redesign): the topic has three segments ending in `metadata`, so it never matches
+`{shared_discovery_prefix}+/+/config` — the two-segment, `config`-suffixed pattern every
+receiver (blueprint or Grapevine) subscribes to today (§5). Nobody's subscription sees
+this message unless they deliberately opt into it in the future, so publishing it
+unilaterally changes nothing about how any existing receiver behaves — the same safety
+argument §5a used for native materialization.
+
+**Timing:** published on the same `time_pattern` tick as the full discovery/state
+republish (§6) — at startup, on the periodic clock-aligned trigger, and on-demand via the
+`republish` service — rather than a second, separately configurable interval. Subject to
+the same 0-9s jitter as any other publish.
+
+**Local surfacing:** this bridge's own metadata is also shown locally, since publishing it
+to the wire doesn't make it visible to the person running this instance. A device
+representing "this bridge instance" (distinct from the devices §5a creates for *remote*
+bridges) carries `integration_version`/`protocol_version` in its `sw_version`, plus three
+`entity_category: diagnostic` entities — entity count, last heartbeat, and HA version —
+that update every time a metadata message is published. The full payload is also
+available via Home Assistant's "Download Diagnostics" for support requests.
+
+**Not implemented:** consuming *other* bridges' metadata messages (e.g. showing a remote
+bridge's last-seen time locally). The issue that motivated this is about a bridge's
+visibility into itself, not a peer directory; nothing here stops a future receiving-side
+subscription from being added the same way §5a's discovery consumption was, if that's
+ever wanted.

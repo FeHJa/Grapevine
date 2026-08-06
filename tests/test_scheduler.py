@@ -27,6 +27,7 @@ from custom_components.grapevine.scheduler import BridgeScheduler
 class RecordingAdapter(ProtocolAdapter):
     def __init__(self) -> None:
         self.published: list[tuple[str, str]] = []
+        self.published_metadata: list[int] = []
 
     def topics_to_subscribe(self) -> list[str]:
         return ["fake/+/+/config"]
@@ -42,6 +43,10 @@ class RecordingAdapter(ProtocolAdapter):
 
     async def async_handle_mqtt_message(self, msg) -> None:
         pass
+
+    async def async_publish_metadata(self, entity_count: int) -> dict:
+        self.published_metadata.append(entity_count)
+        return {"entity_count": entity_count}
 
 
 def _make_hass_entry(entities: list[str], minutes: int = 1) -> tuple[HomeAssistant, ConfigEntry]:
@@ -215,6 +220,70 @@ def test_clock_tick_only_republishes_on_matching_minute(monkeypatch):
     _run(scenario())
 
 
+def test_republish_all_publishes_metadata_with_current_entity_count(monkeypatch):
+    _no_jitter(monkeypatch)
+    hass, entry = _make_hass_entry(["sensor.a", "sensor.b"])
+    hass.states.async_set("sensor.a", "1")
+    hass.states.async_set("sensor.b", "2")
+    adapter = RecordingAdapter()
+    sched = BridgeScheduler(hass, entry, adapter)
+
+    async def scenario():
+        await sched.async_setup()
+        await _drain(sched)
+
+    _run(scenario())
+
+    assert adapter.published_metadata == [2]
+
+
+def test_clock_tick_republishes_metadata_alongside_entities(monkeypatch):
+    _no_jitter(monkeypatch)
+    hass, entry = _make_hass_entry(["sensor.a"], minutes=1)
+    hass.states.async_set("sensor.a", "x")
+    adapter = RecordingAdapter()
+    sched = BridgeScheduler(hass, entry, adapter)
+
+    async def scenario():
+        await sched.async_setup()
+        await _drain(sched)
+        adapter.published_metadata.clear()
+
+        async_fire_time_changed(hass, datetime(2026, 1, 1, 12, 1, 0))
+        await _drain(sched)
+
+    _run(scenario())
+
+    assert adapter.published_metadata == [1]
+
+
+def test_metadata_entities_are_updated_after_publish(monkeypatch):
+    _no_jitter(monkeypatch)
+    hass, entry = _make_hass_entry(["sensor.a"])
+    hass.states.async_set("sensor.a", "x")
+    adapter = RecordingAdapter()
+    sched = BridgeScheduler(hass, entry, adapter)
+
+    class RecordingSink:
+        def __init__(self) -> None:
+            self.updates: list[dict] = []
+
+        def update(self, metadata: dict) -> None:
+            self.updates.append(metadata)
+
+    sink = RecordingSink()
+    sched.set_metadata_entities(sink)
+
+    async def scenario():
+        await sched.async_setup()
+        await _drain(sched)
+
+    _run(scenario())
+
+    assert sink.updates == [{"entity_count": 1}]
+    assert sched.last_metadata == {"entity_count": 1}
+
+
 def test_republish_is_jittered_within_documented_bounds(monkeypatch):
     calls: list[tuple[float, float]] = []
     monkeypatch.setattr(
@@ -231,7 +300,9 @@ def test_republish_is_jittered_within_documented_bounds(monkeypatch):
 
     _run(scenario())
 
-    assert calls == [(0, scheduler_module.JITTER_MAX_SECONDS)]
+    # One entity publish + one metadata publish, each independently
+    # jittered within the same documented bounds.
+    assert calls == [(0, scheduler_module.JITTER_MAX_SECONDS)] * 2
 
 
 def test_unload_cancels_pending_jittered_tasks_and_unsubscribes():
