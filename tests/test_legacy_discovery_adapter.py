@@ -44,7 +44,7 @@ def _make_adapter(hass: HomeAssistant, manager: RecordingEntityManager) -> Legac
             CONF_BRIDGE_NAME: "Bridge Jakob",
         }
     )
-    return LegacyDiscoveryAdapter(hass, entry, manager)
+    return LegacyDiscoveryAdapter(hass, entry, manager, "0.1.3")
 
 
 def _run(coro):

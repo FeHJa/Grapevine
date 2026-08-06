@@ -408,6 +408,20 @@ subscription model:
    consequence, `local_discovery_prefix` is removed from the config
    schema entirely (dead field, nothing left to write there) rather than
    kept around unused.
+7. **No blocking I/O directly in `async_setup_entry`/adapter constructors**
+   (learned the hard way, issue #13): `version.py`'s manifest.json read is
+   synchronous file I/O; calling it straight from `LegacyDiscoveryAdapter.
+   __init__`/`BridgeMetadataEntities.__init__` ran it on the event loop on
+   every setup, including every reload triggered by the Configure flow —
+   HA's blocking-call guard caught it and broke the entry until a full
+   delete+recreate. The fake HA test harness doesn't model this detection
+   at all, so the test suite passed the whole time. Fixed by fetching it
+   once via `hass.async_add_executor_job` in `async_setup_entry` and
+   threading the value through `GrapevineRuntimeData` instead of letting
+   each consumer read the file itself. Any future blocking call (file I/O,
+   network, subprocess) must go through `hass.async_add_executor_job` the
+   same way — this class of bug is invisible to the test harness, so it
+   has to be caught by code review, not by `pytest`.
 
 Phase 1 work can start directly from the file layout above, using
 `PROTOCOL.md` as the acceptance spec for each module.

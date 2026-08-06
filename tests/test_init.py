@@ -71,6 +71,28 @@ def test_setup_entry_wires_scheduler_onto_runtime_data():
     assert isinstance(entry.runtime_data.scheduler, BridgeScheduler)
     assert isinstance(entry.runtime_data.remote_entity_manager, RemoteEntityManager)
     assert isinstance(entry.runtime_data.protocol_adapter, LegacyDiscoveryAdapter)
+    assert entry.runtime_data.integration_version == "0.1.3"
+
+
+def test_setup_entry_reads_manifest_version_off_the_event_loop(monkeypatch):
+    # issue #13: integration_version() does blocking file I/O; it must be
+    # fetched via hass.async_add_executor_job, never called directly on
+    # the event loop (that crashed/hung every setup, including reload).
+    calls: list[object] = []
+    real_executor_job = HomeAssistant.async_add_executor_job
+
+    async def recording_executor_job(self, target, *args):
+        calls.append(target)
+        return await real_executor_job(self, target, *args)
+
+    monkeypatch.setattr(HomeAssistant, "async_add_executor_job", recording_executor_job)
+
+    hass = HomeAssistant()
+    entry = _make_entry("entry1", "Bridge Jakob", ["sensor.a"])
+
+    _run(grapevine.async_setup_entry(hass, entry))
+
+    assert grapevine.integration_version in calls
 
 
 def test_setup_entry_registers_service_once():

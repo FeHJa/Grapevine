@@ -106,3 +106,9 @@ class HomeAssistant:
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
         return task
+
+    async def async_add_executor_job(self, target, *args):
+        """Fake of running blocking code off the event loop -- just calls
+        it inline. Real HA actually runs this in a thread pool; tests only
+        care that callers await it and get the return value back."""
+        return target(*args)

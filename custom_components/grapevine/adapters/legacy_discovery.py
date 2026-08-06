@@ -32,7 +32,6 @@ from ..discovery import (
 )
 from ..protocol import ProtocolAdapter
 from ..remote_entity_manager import RemoteEntityManager
-from ..version import integration_version
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -49,7 +48,11 @@ _VALID_SENSOR_DEVICE_CLASSES = frozenset(member.value for member in SensorDevice
 
 class LegacyDiscoveryAdapter(ProtocolAdapter):
     def __init__(
-        self, hass: HomeAssistant, entry: ConfigEntry, remote_entity_manager: RemoteEntityManager
+        self,
+        hass: HomeAssistant,
+        entry: ConfigEntry,
+        remote_entity_manager: RemoteEntityManager,
+        integration_version: str,
     ) -> None:
         self._hass = hass
         self._remote_entity_manager = remote_entity_manager
@@ -57,7 +60,10 @@ class LegacyDiscoveryAdapter(ProtocolAdapter):
         self._sensor_value_prefix = entry.data[CONF_SENSOR_VALUE_PREFIX]
         self._bridge_name = entry.data[CONF_BRIDGE_NAME]
         self._slug_bridge_name = slugify_bridge_name(self._bridge_name)
-        self._integration_version = integration_version()
+        # Passed in rather than read here -- version.py's manifest.json
+        # read is blocking I/O and must not run on the event loop
+        # (issue #13); the caller fetches it via hass.async_add_executor_job.
+        self._integration_version = integration_version
 
     def topics_to_subscribe(self) -> list[str]:
         # PROTOCOL.md §5: subscribe using the *configured* shared prefix,

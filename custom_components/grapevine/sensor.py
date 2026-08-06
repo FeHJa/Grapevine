@@ -20,7 +20,6 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import CONF_BRIDGE_NAME, PROTOCOL_VERSION, DOMAIN
 from .discovery import slugify_bridge_name
-from .version import integration_version
 
 
 async def async_setup_entry(
@@ -31,6 +30,7 @@ async def async_setup_entry(
     metadata_entities = BridgeMetadataEntities(
         bridge_name=entry.data[CONF_BRIDGE_NAME],
         slug_bridge_name=slugify_bridge_name(entry.data[CONF_BRIDGE_NAME]),
+        integration_version=entry.runtime_data.integration_version,
     )
     async_add_entities(metadata_entities.entities)
     entry.runtime_data.scheduler.set_metadata_entities(metadata_entities)
@@ -110,11 +110,11 @@ class BridgeMetadataEntities:
     (issue #12) -- created once at platform setup, pushed to on every
     metadata publish via BridgeScheduler.set_metadata_entities."""
 
-    def __init__(self, *, bridge_name: str, slug_bridge_name: str) -> None:
+    def __init__(self, *, bridge_name: str, slug_bridge_name: str, integration_version: str) -> None:
         device_info = {
             "identifiers": {(DOMAIN, slug_bridge_name)},
             "name": bridge_name,
-            "sw_version": f"{integration_version()} (protocol v{PROTOCOL_VERSION})",
+            "sw_version": f"{integration_version} (protocol v{PROTOCOL_VERSION})",
         }
         self.entity_count = _BridgeDiagnosticSensor(
             unique_id=f"{slug_bridge_name}::entity_count",
