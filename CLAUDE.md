@@ -89,6 +89,17 @@ logic. See §8 for why it's there.
 
 Port these regexes verbatim — do not rewrite or "simplify" them.
 
+**Amendment (issue #13):** step 1 only uses the source entity's actual `device_class` if
+it's also a valid value for HA's `sensor` platform (`SensorDeviceClass`). Since the
+`component` segment is hardcoded to `sensor` regardless of the source entity's real domain
+(the known limitation just above), a `binary_sensor`'s `device_class` (e.g. `light`,
+`motion`, `moisture` — valid for `binary_sensor`, not for `sensor`) is *not* forwarded
+verbatim; step 1 is skipped for it and resolution falls through to step 2/3 as if the
+entity had no `device_class` at all. Forwarding it unfiltered made a receiver's own `mqtt`
+integration reject the entire discovery message outright (invalid enum value), which is
+worse than omitting the field — a receiver still gets a working, if less specific, entity
+this way.
+
 ## 4. State payload
 
 Raw state string only (no JSON wrapping), published retained to the state topic. Uses
