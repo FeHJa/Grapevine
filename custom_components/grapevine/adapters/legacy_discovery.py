@@ -12,15 +12,18 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import datetime, timezone
 
 from homeassistant.components import mqtt
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import __version__ as HA_VERSION
 from homeassistant.core import HomeAssistant, State
 
 from .. import mqtt_io
 from ..const import CONF_BRIDGE_NAME, CONF_SENSOR_VALUE_PREFIX, CONF_SHARED_DISCOVERY_PREFIX
 from ..discovery import (
     build_discovery_payload,
+    build_metadata_payload,
     is_own_message,
     object_id_from_entity_id,
     parse_federation_topic,
@@ -28,6 +31,7 @@ from ..discovery import (
 )
 from ..protocol import ProtocolAdapter
 from ..remote_entity_manager import RemoteEntityManager
+from ..version import integration_version
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -42,6 +46,7 @@ class LegacyDiscoveryAdapter(ProtocolAdapter):
         self._sensor_value_prefix = entry.data[CONF_SENSOR_VALUE_PREFIX]
         self._bridge_name = entry.data[CONF_BRIDGE_NAME]
         self._slug_bridge_name = slugify_bridge_name(self._bridge_name)
+        self._integration_version = integration_version()
 
     def topics_to_subscribe(self) -> list[str]:
         # PROTOCOL.md §5: subscribe using the *configured* shared prefix,
@@ -78,6 +83,24 @@ class LegacyDiscoveryAdapter(ProtocolAdapter):
 
         await mqtt_io.async_publish(self._hass, discovery_topic, "", retain=True)
         await mqtt_io.async_publish(self._hass, state_topic, "", retain=True)
+
+    async def async_publish_metadata(self, entity_count: int) -> dict:
+        # §9: a separate topic tree from §2's discovery/state topics --
+        # {prefix}bridge/{slug}/metadata has 3 segments ending in
+        # "metadata", so it never matches the {prefix}+/+/config pattern
+        # any receiver (blueprint or Grapevine) subscribes to. Nobody else
+        # sees this unless/until they deliberately opt in, so publishing
+        # it needs no coordination with the other bridge instances.
+        payload = build_metadata_payload(
+            slug_bridge_name=self._slug_bridge_name,
+            integration_version=self._integration_version,
+            ha_version=HA_VERSION,
+            entity_count=entity_count,
+            last_heartbeat=datetime.now(timezone.utc).isoformat(),
+        )
+        topic = f"{self._shared_discovery_prefix}bridge/{self._slug_bridge_name}/metadata"
+        await mqtt_io.async_publish(self._hass, topic, json.dumps(payload), retain=True)
+        return payload
 
     async def handle_incoming_message(self, topic: str, payload: str) -> None:
         # Topic-shape validation only (§2) -- component/object_id aren't

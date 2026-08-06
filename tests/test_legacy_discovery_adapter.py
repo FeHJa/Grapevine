@@ -118,6 +118,45 @@ def test_depublish_publishes_empty_retained_payload_to_both_topics():
     ]
 
 
+# --- async_publish_metadata (§9, issue #12) ---
+
+
+def test_publish_metadata_publishes_retained_payload_with_entity_count():
+    hass = HomeAssistant()
+    adapter = _make_adapter(hass, RecordingEntityManager())
+
+    payload = _run(adapter.async_publish_metadata(5))
+
+    published = _published(hass)
+    assert len(published) == 1
+    topic, raw_payload, retain = published[0]
+    assert topic == "share/homeassistant/bridge/bridge_jakob/metadata"
+    assert retain is True
+    assert json.loads(raw_payload) == payload
+    assert payload["bridge_id"] == "bridge_jakob"
+    assert payload["entity_count"] == 5
+    assert "last_heartbeat" in payload
+    assert "ha_version" in payload
+    assert "integration_version" in payload
+    assert payload["protocol_version"] == 1
+
+
+def test_publish_metadata_topic_does_not_match_discovery_subscription():
+    # Load-bearing: the metadata topic must never be mistaken for a §2
+    # discovery message by anything (this bridge included) subscribed to
+    # {shared_discovery_prefix}+/+/config.
+    hass = HomeAssistant()
+    adapter = _make_adapter(hass, RecordingEntityManager())
+
+    _run(adapter.async_publish_metadata(1))
+
+    topic, _, _ = _published(hass)[0]
+    prefix = "share/homeassistant/"
+    assert topic.startswith(prefix)
+    remainder = topic[len(prefix) :].split("/")
+    assert not (len(remainder) == 3 and remainder[-1] == "config")
+
+
 # --- topics_to_subscribe ---
 
 

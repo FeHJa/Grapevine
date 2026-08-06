@@ -107,6 +107,17 @@ def test_options_flow_rejects_empty_entities():
     assert result["errors"] == {"base": "no_entities"}
 
 
+def test_options_flow_deduplicates_repeated_entity_selection():
+    hass = HomeAssistant()
+    entry = _make_entry("entry1", "Bridge Jakob", ["sensor.a"])
+    flow = _options_flow(hass, entry)
+
+    result = _run(flow.async_step_init(_submit(entry, entities=["sensor.a", "sensor.b", "sensor.a"])))
+
+    assert result["type"] == "create_entry"
+    assert entry.data[CONF_ENTITIES] == ["sensor.a", "sensor.b"]
+
+
 def test_options_flow_rejects_rename_colliding_with_another_entry():
     hass = HomeAssistant()
     entry_a = _make_entry("entry_a", "Bridge A", ["sensor.a"])

@@ -41,3 +41,12 @@ class ProtocolAdapter(ABC):
         """Handle one incoming message on a subscribed topic, per this
         adapter's protocol (e.g. LegacyDiscoveryAdapter materializes it as
         a native entity via RemoteEntityManager, §5a)."""
+
+    @abstractmethod
+    async def async_publish_metadata(self, entity_count: int) -> dict:
+        """Publish this bridge's own metadata -- protocol version,
+        integration version, HA version, bridged entity count, and a
+        last-heartbeat timestamp -- to a dedicated topic (PROTOCOL.md §9,
+        issue #12). Returns the published payload dict so callers can
+        mirror the same numbers into local diagnostic entities without
+        recomputing them and risking drift."""

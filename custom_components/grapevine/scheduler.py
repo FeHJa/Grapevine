@@ -14,6 +14,7 @@ import asyncio
 import logging
 import random
 from datetime import datetime
+from typing import Protocol
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import Event, HomeAssistant, State, callback
@@ -26,14 +27,32 @@ from .protocol import ProtocolAdapter
 _LOGGER = logging.getLogger(__name__)
 
 
+class MetadataEntitiesSink(Protocol):
+    """What sensor.py's local diagnostic entities need to expose -- kept
+    as a Protocol here rather than importing sensor.py, so scheduler.py
+    doesn't have to know it's specifically entities doing the receiving."""
+
+    def update(self, metadata: dict) -> None: ...
+
+
 class BridgeScheduler:
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry, adapter: ProtocolAdapter) -> None:
         self._hass = hass
         self._entry = entry
         self._adapter = adapter
-        self._entities: list[str] = entry.data[CONF_ENTITIES]
+        # dict.fromkeys dedupes while preserving order -- entries written
+        # by a version predating config_flow.py's own dedup guard could
+        # already carry a duplicate entity_id, which would otherwise make
+        # async_republish_all publish the same retained topic twice per
+        # tick, every tick.
+        self._entities: list[str] = list(dict.fromkeys(entry.data[CONF_ENTITIES]))
         self._minutes: int = entry.options.get(CONF_TIME_PATTERN_MINUTES, 1)
         self._tasks: set[asyncio.Task] = set()
+        # Set once the sensor platform creates the local diagnostic
+        # entities (issue #12) -- None until then, e.g. briefly during
+        # startup before platform forwarding completes.
+        self._metadata_entities: MetadataEntitiesSink | None = None
+        self.last_metadata: dict | None = None
 
     async def async_setup(self) -> None:
         hass = self._hass
@@ -54,11 +73,15 @@ class BridgeScheduler:
         # time_pattern tick — same role as the blueprint's startup behavior.
         self.async_republish_all()
 
+    def set_metadata_entities(self, entities: MetadataEntitiesSink) -> None:
+        self._metadata_entities = entities
+
     def async_republish_all(self) -> None:
         for entity_id in self._entities:
             state = self._hass.states.get(entity_id)
             if state is not None:
                 self._schedule_publish(entity_id, state)
+        self._schedule_metadata_publish()
 
     @callback
     def _handle_state_change(self, event: Event) -> None:
@@ -91,6 +114,25 @@ class BridgeScheduler:
             await self._adapter.publish_own_entity(entity_id, state)
         except Exception:  # noqa: BLE001
             _LOGGER.exception("Failed to publish bridged entity %s", entity_id)
+
+    def _schedule_metadata_publish(self) -> None:
+        task = self._hass.async_create_background_task(
+            self._jittered_metadata_publish(),
+            name="grapevine publish metadata",
+        )
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
+
+    async def _jittered_metadata_publish(self) -> None:
+        await asyncio.sleep(random.uniform(0, JITTER_MAX_SECONDS))
+        try:
+            metadata = await self._adapter.async_publish_metadata(len(self._entities))
+        except Exception:  # noqa: BLE001
+            _LOGGER.exception("Failed to publish bridge metadata")
+            return
+        self.last_metadata = metadata
+        if self._metadata_entities is not None:
+            self._metadata_entities.update(metadata)
 
     @callback
     def _cancel_pending_tasks(self) -> None:

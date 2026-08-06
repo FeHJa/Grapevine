@@ -7,6 +7,7 @@ dependency required: discovery.py has none by design.
 from custom_components.grapevine.const import PROTOCOL_VERSION, SW_VERSION
 from custom_components.grapevine.discovery import (
     build_discovery_payload,
+    build_metadata_payload,
     is_own_message,
     normalize_prefix,
     object_id_from_entity_id,
@@ -163,6 +164,27 @@ def test_payload_omits_device_class_and_unit_entirely_when_unknown():
 def test_payload_protocol_version_is_one_in_phase_1():
     payload = _payload()
     assert payload["protocol_version"] == 1
+
+
+# --- build_metadata_payload (§9, issue #12) ---
+
+
+def test_metadata_payload_shape_matches_protocol_contract():
+    payload = build_metadata_payload(
+        slug_bridge_name="bridge_jakob",
+        integration_version="0.1.3",
+        ha_version="2026.8.0",
+        entity_count=3,
+        last_heartbeat="2026-08-06T08:14:00+00:00",
+    )
+    assert payload == {
+        "protocol_version": PROTOCOL_VERSION,
+        "integration_version": "0.1.3",
+        "bridge_id": "bridge_jakob",
+        "ha_version": "2026.8.0",
+        "entity_count": 3,
+        "last_heartbeat": "2026-08-06T08:14:00+00:00",
+    }
 
 
 # --- parse_federation_topic (§2/§5) ---

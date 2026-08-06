@@ -6,6 +6,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from homeassistant.const import EntityCategory
+
 
 class SensorEntity:
     _attr_should_poll: bool = True
@@ -15,6 +17,7 @@ class SensorEntity:
     _attr_native_unit_of_measurement: str | None = None
     _attr_native_value: str | None = None
     _attr_device_info: dict | None = None
+    _attr_entity_category: EntityCategory | None = None
 
     hass: Any = None
     entity_id: str | None = None
