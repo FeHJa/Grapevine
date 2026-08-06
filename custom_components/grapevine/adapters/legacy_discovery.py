@@ -15,6 +15,7 @@ import logging
 from datetime import datetime, timezone
 
 from homeassistant.components import mqtt
+from homeassistant.components.sensor import SensorDeviceClass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import __version__ as HA_VERSION
 from homeassistant.core import HomeAssistant, State
@@ -34,6 +35,16 @@ from ..remote_entity_manager import RemoteEntityManager
 from ..version import integration_version
 
 _LOGGER = logging.getLogger(__name__)
+
+# PROTOCOL.md §2: own entities are always published with component
+# hardcoded to "sensor", regardless of the source entity's real domain.
+# A device_class that's only valid for another platform (e.g.
+# binary_sensor's "light"/"motion"/"moisture") must not be forwarded
+# verbatim -- HA's own mqtt integration validates device_class against
+# SensorDeviceClass for a "sensor" discovery payload and rejects the
+# whole message outright if it doesn't match, which is what a
+# blueprint-based receiver's local mqtt integration does (issue #13).
+_VALID_SENSOR_DEVICE_CLASSES = frozenset(member.value for member in SensorDeviceClass)
 
 
 class LegacyDiscoveryAdapter(ProtocolAdapter):
@@ -55,10 +66,16 @@ class LegacyDiscoveryAdapter(ProtocolAdapter):
 
     async def publish_own_entity(self, entity_id: str, state: State) -> None:
         object_id = object_id_from_entity_id(entity_id)
+        device_class = state.attributes.get("device_class")
+        if device_class not in _VALID_SENSOR_DEVICE_CLASSES:
+            # Not valid for the "sensor" component we always publish as --
+            # drop it and let §3's regex-table fallback (or omission) take
+            # over, same as when the entity has no device_class at all.
+            device_class = None
         payload = build_discovery_payload(
             entity_id=entity_id,
             friendly_name=state.attributes.get("friendly_name"),
-            device_class=state.attributes.get("device_class"),
+            device_class=device_class,
             unit_of_measurement=state.attributes.get("unit_of_measurement"),
             bridge_name=self._bridge_name,
             slug_bridge_name=self._slug_bridge_name,

@@ -91,6 +91,39 @@ def test_publish_own_entity_publishes_discovery_and_state_retained():
     assert state_retain is True
 
 
+def test_publish_own_entity_drops_device_class_invalid_for_sensor_platform():
+    # issue #13: a binary_sensor's real device_class (e.g. "light",
+    # "motion") isn't a valid SensorDeviceClass, but this bridge always
+    # publishes component "sensor" (§2) -- forwarding it verbatim made a
+    # blueprint-based receiver's own mqtt integration reject the whole
+    # discovery message outright.
+    hass = HomeAssistant()
+    adapter = _make_adapter(hass, RecordingEntityManager())
+    state = State(
+        "binary_sensor.pv_sunny", "on", {"friendly_name": "PV Sunny", "device_class": "light"}
+    )
+
+    _run(adapter.publish_own_entity("binary_sensor.pv_sunny", state))
+
+    discovery_topic, discovery_payload, _ = _published(hass)[0]
+    payload = json.loads(discovery_payload)
+    assert "device_class" not in payload
+
+
+def test_publish_own_entity_keeps_device_class_valid_for_sensor_platform():
+    hass = HomeAssistant()
+    adapter = _make_adapter(hass, RecordingEntityManager())
+    state = State(
+        "sensor.garage_humidity", "50", {"friendly_name": "Garage Humidity", "device_class": "humidity"}
+    )
+
+    _run(adapter.publish_own_entity("sensor.garage_humidity", state))
+
+    _, discovery_payload, _ = _published(hass)[0]
+    payload = json.loads(discovery_payload)
+    assert payload["device_class"] == "humidity"
+
+
 def test_publish_own_entity_uses_shared_discovery_prefix_for_topic():
     hass = HomeAssistant()
     adapter = _make_adapter(hass, RecordingEntityManager())

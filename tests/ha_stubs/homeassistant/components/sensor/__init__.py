@@ -4,9 +4,26 @@ attributes/methods custom_components/grapevine/sensor.py uses.
 
 from __future__ import annotations
 
+from enum import StrEnum
 from typing import Any
 
 from homeassistant.const import EntityCategory
+
+
+class SensorDeviceClass(StrEnum):
+    """Not the real, exhaustive enum -- just enough real members (and a
+    deliberate absence of binary_sensor-only values like "light"/"motion")
+    for tests to exercise the issue #13 device_class filtering against
+    something real-shaped rather than a hand-invented list."""
+
+    TEMPERATURE = "temperature"
+    HUMIDITY = "humidity"
+    PRESSURE = "pressure"
+    POWER = "power"
+    ENERGY = "energy"
+    CURRENT = "current"
+    VOLTAGE = "voltage"
+    ILLUMINANCE = "illuminance"
 
 
 class SensorEntity:
