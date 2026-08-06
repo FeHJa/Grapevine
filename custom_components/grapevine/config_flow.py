@@ -79,7 +79,12 @@ class GrapevineConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             slug_bridge_name = slugify_bridge_name(user_input[CONF_BRIDGE_NAME])
-            entities = user_input[CONF_ENTITIES]
+            # dict.fromkeys dedupes while preserving selection order -- the
+            # entity picker shouldn't produce duplicates, but nothing stops
+            # one from reaching here, and a duplicate means
+            # BridgeScheduler.async_republish_all publishes the same
+            # retained topic twice per tick.
+            entities = list(dict.fromkeys(user_input[CONF_ENTITIES]))
 
             if not slug_bridge_name:
                 errors["base"] = "invalid_bridge_name"
@@ -131,7 +136,10 @@ class GrapevineOptionsFlow(config_entries.OptionsFlow):
 
         if user_input is not None:
             slug_bridge_name = slugify_bridge_name(user_input[CONF_BRIDGE_NAME])
-            entities = user_input[CONF_ENTITIES]
+            # See async_step_user's comment: dedupe defensively, since a
+            # duplicate entity_id makes async_republish_all double-publish
+            # the same retained topic every tick.
+            entities = list(dict.fromkeys(user_input[CONF_ENTITIES]))
 
             if not slug_bridge_name:
                 errors["base"] = "invalid_bridge_name"

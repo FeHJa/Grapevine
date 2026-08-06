@@ -85,6 +85,26 @@ def test_setup_does_initial_republish_for_known_entities(monkeypatch):
     assert sorted(adapter.published) == [("sensor.a", "1"), ("sensor.b", "2")]
 
 
+def test_duplicate_entity_id_in_entry_data_is_published_only_once(monkeypatch):
+    # Guards against a config entry written by a version predating
+    # config_flow.py's own dedup guard: a duplicate entity_id in
+    # entry.data[CONF_ENTITIES] previously made every republish tick
+    # publish the same retained topic twice.
+    _no_jitter(monkeypatch)
+    hass, entry = _make_hass_entry(["sensor.a", "sensor.a"])
+    hass.states.async_set("sensor.a", "1")
+    adapter = RecordingAdapter()
+    sched = BridgeScheduler(hass, entry, adapter)
+
+    async def scenario():
+        await sched.async_setup()
+        await _drain(sched)
+
+    _run(scenario())
+
+    assert adapter.published == [("sensor.a", "1")]
+
+
 def test_setup_skips_entities_without_state(monkeypatch):
     _no_jitter(monkeypatch)
     hass, entry = _make_hass_entry(["sensor.a", "sensor.missing"])

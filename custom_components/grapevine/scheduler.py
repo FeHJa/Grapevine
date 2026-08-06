@@ -31,7 +31,12 @@ class BridgeScheduler:
         self._hass = hass
         self._entry = entry
         self._adapter = adapter
-        self._entities: list[str] = entry.data[CONF_ENTITIES]
+        # dict.fromkeys dedupes while preserving order -- entries written
+        # by a version predating config_flow.py's own dedup guard could
+        # already carry a duplicate entity_id, which would otherwise make
+        # async_republish_all publish the same retained topic twice per
+        # tick, every tick.
+        self._entities: list[str] = list(dict.fromkeys(entry.data[CONF_ENTITIES]))
         self._minutes: int = entry.options.get(CONF_TIME_PATTERN_MINUTES, 1)
         self._tasks: set[asyncio.Task] = set()
 

@@ -92,6 +92,17 @@ def test_empty_entities_is_rejected():
     assert result["errors"] == {"base": "no_entities"}
 
 
+def test_duplicate_entity_in_selection_is_deduped():
+    flow = _make_flow()
+    dup_input = dict(VALID_INPUT)
+    dup_input[CONF_ENTITIES] = ["sensor.garage_temperature", "sensor.garage_temperature"]
+
+    result = _run(flow.async_step_user(dup_input))
+
+    assert result["type"] == "create_entry"
+    assert result["data"][CONF_ENTITIES] == ["sensor.garage_temperature"]
+
+
 def test_duplicate_bridge_name_aborts():
     flow = _make_flow()
     flow.hass.config_entries.entries.append(
