@@ -27,6 +27,7 @@ class RecordingEntityManager:
         self.handled: list[dict] = []
         self.handled_topics: list[str] = []
         self.removed_topics: list[str] = []
+        self.handled_metadata: list[tuple[str, dict]] = []
 
     async def async_handle_discovery(self, topic: str, payload_data: dict) -> None:
         self.handled.append(payload_data)
@@ -34,6 +35,9 @@ class RecordingEntityManager:
 
     async def async_handle_removal(self, topic: str) -> None:
         self.removed_topics.append(topic)
+
+    async def async_handle_remote_metadata(self, bridge_id: str, payload_data: dict) -> None:
+        self.handled_metadata.append((bridge_id, payload_data))
 
 
 def _make_adapter(hass: HomeAssistant, manager: RecordingEntityManager) -> LegacyDiscoveryAdapter:
@@ -196,7 +200,10 @@ def test_publish_metadata_topic_does_not_match_discovery_subscription():
 def test_topics_to_subscribe_uses_configured_shared_prefix():
     hass = HomeAssistant()
     adapter = _make_adapter(hass, RecordingEntityManager())
-    assert adapter.topics_to_subscribe() == ["share/homeassistant/+/+/config"]
+    assert adapter.topics_to_subscribe() == [
+        "share/homeassistant/+/+/config",
+        "share/homeassistant/bridge/+/metadata",
+    ]
 
 
 # --- handle_incoming_message: loop guard + dispatch to entity manager (§5/§5a) ---
@@ -261,6 +268,64 @@ def test_ignores_message_on_unmatched_topic_shape():
     _run(adapter.handle_incoming_message("some/other/topic", '{"bridge_id": "x"}'))
 
     assert manager.handled == []
+
+
+# --- handle_incoming_message: routing remote metadata (§9, issue #12 follow-up) ---
+
+
+def test_incoming_metadata_routes_to_entity_manager():
+    hass = HomeAssistant()
+    manager = RecordingEntityManager()
+    adapter = _make_adapter(hass, manager)
+    raw_payload = '{"bridge_id": "other_bridge", "entity_count": 3}'
+
+    _run(
+        adapter.handle_incoming_message(
+            "share/homeassistant/bridge/other_bridge/metadata", raw_payload
+        )
+    )
+
+    assert manager.handled_metadata == [("other_bridge", {"bridge_id": "other_bridge", "entity_count": 3})]
+    assert manager.handled == []
+
+
+def test_incoming_metadata_for_own_bridge_is_ignored():
+    hass = HomeAssistant()
+    manager = RecordingEntityManager()
+    adapter = _make_adapter(hass, manager)
+
+    _run(
+        adapter.handle_incoming_message(
+            "share/homeassistant/bridge/bridge_jakob/metadata", '{"bridge_id": "bridge_jakob"}'
+        )
+    )
+
+    assert manager.handled_metadata == []
+
+
+def test_incoming_metadata_non_json_payload_is_ignored():
+    hass = HomeAssistant()
+    manager = RecordingEntityManager()
+    adapter = _make_adapter(hass, manager)
+
+    _run(
+        adapter.handle_incoming_message(
+            "share/homeassistant/bridge/other_bridge/metadata", "not json"
+        )
+    )
+
+    assert manager.handled_metadata == []
+
+
+def test_incoming_metadata_empty_payload_is_ignored():
+    hass = HomeAssistant()
+    manager = RecordingEntityManager()
+    adapter = _make_adapter(hass, manager)
+
+    _run(adapter.handle_incoming_message("share/homeassistant/bridge/other_bridge/metadata", ""))
+
+    assert manager.handled_metadata == []
+    assert manager.removed_topics == []
 
 
 # --- empty payload = removal signal (issue #7) ---

@@ -12,6 +12,7 @@ from custom_components.grapevine.discovery import (
     normalize_prefix,
     object_id_from_entity_id,
     parse_federation_topic,
+    parse_metadata_topic,
     resolve_device_class_and_unit,
     slugify_bridge_name,
 )
@@ -203,6 +204,33 @@ def test_parse_federation_topic_returns_none_for_mismatched_prefix():
 
 def test_parse_federation_topic_returns_none_for_too_short_remainder():
     assert parse_federation_topic("share/homeassistant/sensor", "share/homeassistant/") is None
+
+
+# --- parse_metadata_topic (§9, issue #12 follow-up) ---
+
+
+def test_parse_metadata_topic_extracts_bridge_id():
+    result = parse_metadata_topic(
+        "share/homeassistant/bridge/other_bridge/metadata", "share/homeassistant/"
+    )
+    assert result == "other_bridge"
+
+
+def test_parse_metadata_topic_returns_none_for_mismatched_prefix():
+    assert parse_metadata_topic("other/prefix/bridge/x/metadata", "share/homeassistant/") is None
+
+
+def test_parse_metadata_topic_returns_none_for_discovery_shaped_topic():
+    # Must not collide with the §2 discovery pattern (2 segments ending
+    # in "config") -- this is the whole point of the topic shape (§9).
+    assert (
+        parse_metadata_topic("share/homeassistant/sensor/garage_temperature/config", "share/homeassistant/")
+        is None
+    )
+
+
+def test_parse_metadata_topic_returns_none_for_wrong_middle_segment():
+    assert parse_metadata_topic("share/homeassistant/other/x/metadata", "share/homeassistant/") is None
 
 
 # --- is_own_message (§5 loop guard) ---

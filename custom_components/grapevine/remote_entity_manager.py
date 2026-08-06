@@ -17,8 +17,8 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import mqtt_io
-from .const import DOMAIN
-from .sensor import BridgedSensorEntity
+from .const import DOMAIN, PROTOCOL_VERSION
+from .sensor import BridgedSensorEntity, BridgeMetadataEntities
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -31,6 +31,16 @@ class RemoteEntityManager:
         self._state_unsubs: dict[str, callable] = {}
         self._topic_to_unique_id: dict[str, str] = {}
         self._add_entities_callback: AddEntitiesCallback | None = None
+        # Remote-bridge metadata (§9, issue #12 follow-up): a bridge's
+        # diagnostic entities are only ever shown if we already have at
+        # least one entity materialized from them -- these three dicts
+        # track that membership so the metadata entities can be created
+        # lazily (whenever metadata first arrives for a known bridge) and
+        # torn down again once that bridge has no entities left.
+        self._entity_bridge_id: dict[str, str] = {}
+        self._bridge_entity_counts: dict[str, int] = {}
+        self._bridge_names: dict[str, str] = {}
+        self._remote_metadata_entities: dict[str, BridgeMetadataEntities] = {}
 
     def set_add_entities_callback(self, callback: AddEntitiesCallback) -> None:
         self._add_entities_callback = callback
@@ -51,6 +61,7 @@ class RemoteEntityManager:
         device_identifiers = {(DOMAIN, ident) for ident in device.get("identifiers", [])}
         device_name = device.get("name")
         device_sw_version = device.get("sw_version")
+        bridge_id = next(iter(device.get("identifiers", [])), None)
 
         existing = self._entities.get(unique_id)
         if existing is not None:
@@ -63,6 +74,8 @@ class RemoteEntityManager:
                 device_sw_version=device_sw_version,
             )
             self._topic_to_unique_id[topic] = unique_id
+            if bridge_id is not None:
+                self._bridge_names[bridge_id] = device_name
             return
 
         entity = BridgedSensorEntity(
@@ -85,6 +98,10 @@ class RemoteEntityManager:
 
         self._entities[unique_id] = entity
         self._topic_to_unique_id[topic] = unique_id
+        if bridge_id is not None:
+            self._entity_bridge_id[unique_id] = bridge_id
+            self._bridge_entity_counts[bridge_id] = self._bridge_entity_counts.get(bridge_id, 0) + 1
+            self._bridge_names[bridge_id] = device_name
         self._state_unsubs[unique_id] = await mqtt_io.async_subscribe(
             self._hass, state_topic, self._make_state_handler(unique_id)
         )
@@ -113,6 +130,50 @@ class RemoteEntityManager:
         if entity is None:
             return
 
+        await self._async_remove_entity(entity)
+
+        bridge_id = self._entity_bridge_id.pop(unique_id, None)
+        if bridge_id is None:
+            return
+        remaining = self._bridge_entity_counts.get(bridge_id, 0) - 1
+        if remaining > 0:
+            self._bridge_entity_counts[bridge_id] = remaining
+            return
+        # That was the last entity from this bridge -- its diagnostic
+        # entities (if any were ever created) no longer have anything to
+        # attach to (issue #12 follow-up).
+        self._bridge_entity_counts.pop(bridge_id, None)
+        self._bridge_names.pop(bridge_id, None)
+        metadata_entities = self._remote_metadata_entities.pop(bridge_id, None)
+        if metadata_entities is not None:
+            for metadata_entity in metadata_entities.entities:
+                await self._async_remove_entity(metadata_entity)
+
+    async def async_handle_remote_metadata(self, bridge_id: str, payload_data: dict) -> None:
+        """A metadata message (§9, issue #12) arrived for `bridge_id`.
+        Only shown if we already materialized at least one entity from
+        that bridge -- otherwise there's no device to attach it to, and
+        no reason to create one from metadata alone."""
+        if bridge_id not in self._bridge_entity_counts:
+            _LOGGER.debug("Ignoring metadata for unknown bridge %s", bridge_id)
+            return
+
+        metadata_entities = self._remote_metadata_entities.get(bridge_id)
+        if metadata_entities is None:
+            if self._add_entities_callback is None:
+                return
+            metadata_entities = BridgeMetadataEntities(
+                bridge_name=self._bridge_names.get(bridge_id, bridge_id),
+                slug_bridge_name=bridge_id,
+                integration_version=payload_data.get("integration_version", "unknown"),
+                protocol_version=payload_data.get("protocol_version", PROTOCOL_VERSION),
+            )
+            self._remote_metadata_entities[bridge_id] = metadata_entities
+            self._add_entities_callback(metadata_entities.entities)
+
+        metadata_entities.update(payload_data)
+
+    async def _async_remove_entity(self, entity) -> None:
         entity_id = entity.entity_id
         await entity.async_remove()
         if entity_id is not None:
@@ -134,3 +195,7 @@ class RemoteEntityManager:
         self._state_unsubs.clear()
         self._entities.clear()
         self._topic_to_unique_id.clear()
+        self._entity_bridge_id.clear()
+        self._bridge_entity_counts.clear()
+        self._bridge_names.clear()
+        self._remote_metadata_entities.clear()

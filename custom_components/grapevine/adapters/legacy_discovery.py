@@ -28,6 +28,7 @@ from ..discovery import (
     is_own_message,
     object_id_from_entity_id,
     parse_federation_topic,
+    parse_metadata_topic,
     slugify_bridge_name,
 )
 from ..protocol import ProtocolAdapter
@@ -67,8 +68,13 @@ class LegacyDiscoveryAdapter(ProtocolAdapter):
 
     def topics_to_subscribe(self) -> list[str]:
         # PROTOCOL.md §5: subscribe using the *configured* shared prefix,
-        # not the blueprint's hardcoded literal.
-        return [f"{self._shared_discovery_prefix}+/+/config"]
+        # not the blueprint's hardcoded literal. The bridge/+/metadata
+        # wildcard is §9's side-channel (issue #12 follow-up) -- shows
+        # other bridges' metadata on their already-materialized device.
+        return [
+            f"{self._shared_discovery_prefix}+/+/config",
+            f"{self._shared_discovery_prefix}bridge/+/metadata",
+        ]
 
     async def publish_own_entity(self, entity_id: str, state: State) -> None:
         object_id = object_id_from_entity_id(entity_id)
@@ -126,6 +132,22 @@ class LegacyDiscoveryAdapter(ProtocolAdapter):
         return payload
 
     async def handle_incoming_message(self, topic: str, payload: str) -> None:
+        metadata_bridge_id = parse_metadata_topic(topic, self._shared_discovery_prefix)
+        if metadata_bridge_id is not None:
+            if metadata_bridge_id == self._slug_bridge_name:
+                return  # our own metadata, echoed back by the broker
+            if not payload:
+                return  # nothing to depublish here -- metadata has no removal signal
+            try:
+                payload_data = json.loads(payload)
+            except (json.JSONDecodeError, TypeError):
+                _LOGGER.debug("Ignoring non-JSON metadata payload on %s", topic)
+                return
+            await self._remote_entity_manager.async_handle_remote_metadata(
+                metadata_bridge_id, payload_data
+            )
+            return
+
         # Topic-shape validation only (§2) -- component/object_id aren't
         # needed downstream since §5a, RemoteEntityManager keys everything
         # off the payload's own unique_id.
