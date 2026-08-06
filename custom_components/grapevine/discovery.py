@@ -114,6 +114,20 @@ def build_metadata_payload(
     }
 
 
+def parse_metadata_topic(topic: str, shared_discovery_prefix: str) -> str | None:
+    """PROTOCOL.md §9: {prefix}bridge/{slug_bridge_name}/metadata. Returns
+    the slug_bridge_name if the topic matches this shape, else None --
+    used to route incoming metadata messages separately from §2 discovery
+    messages (issue #12 follow-up: showing other bridges' metadata)."""
+    if not topic.startswith(shared_discovery_prefix):
+        return None
+    remainder = topic[len(shared_discovery_prefix) :]
+    parts = remainder.split("/")
+    if len(parts) != 3 or parts[0] != "bridge" or parts[2] != "metadata":
+        return None
+    return parts[1]
+
+
 def parse_federation_topic(topic: str, shared_discovery_prefix: str) -> tuple[str, str] | None:
     """PROTOCOL.md §2/§5: component/object_id parsed positionally, right
     after the shared prefix. Returns None if topic doesn't match the

@@ -37,7 +37,12 @@ def _run(coro):
 
 
 def test_metadata_entities_share_one_device():
-    entities = BridgeMetadataEntities(bridge_name="Bridge Jakob", slug_bridge_name="bridge_jakob")
+    entities = BridgeMetadataEntities(
+        bridge_name="Bridge Jakob",
+        slug_bridge_name="bridge_jakob",
+        integration_version="0.1.3",
+        protocol_version=1,
+    )
 
     for entity in entities.entities:
         assert entity._attr_device_info["identifiers"] == {("grapevine", "bridge_jakob")}
@@ -45,13 +50,23 @@ def test_metadata_entities_share_one_device():
 
 
 def test_metadata_entities_are_diagnostic_category():
-    entities = BridgeMetadataEntities(bridge_name="Bridge Jakob", slug_bridge_name="bridge_jakob")
+    entities = BridgeMetadataEntities(
+        bridge_name="Bridge Jakob",
+        slug_bridge_name="bridge_jakob",
+        integration_version="0.1.3",
+        protocol_version=1,
+    )
     assert all(e._attr_entity_category == EntityCategory.DIAGNOSTIC for e in entities.entities)
 
 
 def test_metadata_entities_update_sets_native_values():
     hass = HomeAssistant()
-    entities = BridgeMetadataEntities(bridge_name="Bridge Jakob", slug_bridge_name="bridge_jakob")
+    entities = BridgeMetadataEntities(
+        bridge_name="Bridge Jakob",
+        slug_bridge_name="bridge_jakob",
+        integration_version="0.1.3",
+        protocol_version=1,
+    )
     for entity, suffix in zip(entities.entities, ["count", "heartbeat", "haversion"]):
         entity.hass = hass
         entity.entity_id = f"sensor.{suffix}"

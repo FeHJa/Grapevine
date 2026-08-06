@@ -259,3 +259,103 @@ def test_rediscovery_after_removal_creates_a_fresh_entity():
 
     assert len(added) == 2
     assert "other_bridge::sensor.garage_humidity" in manager._entities
+
+
+# --- async_handle_remote_metadata (§9, issue #12 follow-up) ---
+
+METADATA_PAYLOAD = {
+    "protocol_version": 1,
+    "integration_version": "0.1.3",
+    "bridge_id": "other_bridge",
+    "ha_version": "2026.8.0",
+    "entity_count": 3,
+    "last_heartbeat": "2026-08-06T08:14:00+00:00",
+}
+
+
+def test_metadata_ignored_for_bridge_with_no_known_entities():
+    hass = HomeAssistant()
+    manager, added = _make_manager(hass)
+
+    _run(manager.async_handle_remote_metadata("other_bridge", dict(METADATA_PAYLOAD)))
+
+    assert added == []
+
+
+def test_metadata_creates_diagnostic_entities_for_known_bridge():
+    hass = HomeAssistant()
+    manager, added = _make_manager(hass)
+
+    async def scenario():
+        await manager.async_handle_discovery(DISCOVERY_TOPIC, dict(EXAMPLE_PAYLOAD))
+        await manager.async_handle_remote_metadata("other_bridge", dict(METADATA_PAYLOAD))
+
+    _run(scenario())
+
+    # 1 federated entity + 3 diagnostic entities.
+    assert len(added) == 4
+    diagnostic_entities = added[1:]
+    assert {e.unique_id for e in diagnostic_entities} == {
+        "other_bridge::entity_count",
+        "other_bridge::last_heartbeat",
+        "other_bridge::ha_version",
+    }
+    for entity in diagnostic_entities:
+        assert entity._attr_device_info["identifiers"] == {(DOMAIN, "other_bridge")}
+        assert entity._attr_device_info["name"] == "Bridge Other"  # from the discovery payload
+        assert "0.1.3" in entity._attr_device_info["sw_version"]
+        assert "protocol v1" in entity._attr_device_info["sw_version"]
+
+
+def test_metadata_redelivery_updates_values_without_readding():
+    hass = HomeAssistant()
+    manager, added = _make_manager(hass)
+
+    async def scenario():
+        await manager.async_handle_discovery(DISCOVERY_TOPIC, dict(EXAMPLE_PAYLOAD))
+        await manager.async_handle_remote_metadata("other_bridge", dict(METADATA_PAYLOAD))
+        updated = dict(METADATA_PAYLOAD)
+        updated["entity_count"] = 5
+        await manager.async_handle_remote_metadata("other_bridge", updated)
+
+    _run(scenario())
+
+    assert len(added) == 4  # no duplicate diagnostic entities on redelivery
+    holder = manager._remote_metadata_entities["other_bridge"]
+    assert holder.entity_count.native_value == "5"
+
+
+def test_metadata_diagnostic_entities_removed_when_last_entity_removed():
+    hass = HomeAssistant()
+    manager, added = _make_manager(hass)
+
+    async def scenario():
+        await manager.async_handle_discovery(DISCOVERY_TOPIC, dict(EXAMPLE_PAYLOAD))
+        await manager.async_handle_remote_metadata("other_bridge", dict(METADATA_PAYLOAD))
+        await manager.async_handle_removal(DISCOVERY_TOPIC)
+
+    _run(scenario())
+
+    assert "other_bridge" not in manager._remote_metadata_entities
+    assert hass.states.get("sensor.other_bridge__entity_count") is None
+
+
+def test_metadata_diagnostic_entities_survive_partial_entity_removal():
+    hass = HomeAssistant()
+    manager, added = _make_manager(hass)
+    second_topic = "share/homeassistant/sensor/garage_temperature/config"
+
+    async def scenario():
+        await manager.async_handle_discovery(DISCOVERY_TOPIC, dict(EXAMPLE_PAYLOAD))
+        second = dict(EXAMPLE_PAYLOAD)
+        second["unique_id"] = "other_bridge::sensor.garage_temperature"
+        second["state_topic"] = "share/other_bridge/sensor/garage_temperature"
+        await manager.async_handle_discovery(second_topic, second)
+        await manager.async_handle_remote_metadata("other_bridge", dict(METADATA_PAYLOAD))
+
+        await manager.async_handle_removal(DISCOVERY_TOPIC)  # only one of the two
+
+    _run(scenario())
+
+    assert "other_bridge" in manager._remote_metadata_entities
+    assert hass.states.get("sensor.other_bridge__entity_count") is not None

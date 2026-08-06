@@ -293,8 +293,20 @@ bridges) carries `integration_version`/`protocol_version` in its `sw_version`, p
 that update every time a metadata message is published. The full payload is also
 available via Home Assistant's "Download Diagnostics" for support requests.
 
-**Not implemented:** consuming *other* bridges' metadata messages (e.g. showing a remote
-bridge's last-seen time locally). The issue that motivated this is about a bridge's
-visibility into itself, not a peer directory; nothing here stops a future receiving-side
-subscription from being added the same way §5a's discovery consumption was, if that's
-ever wanted.
+**Amendment: consuming other bridges' metadata (issue #12 follow-up).** Status:
+implemented. `LegacyDiscoveryAdapter` also subscribes to
+`{shared_discovery_prefix}bridge/+/metadata`. Deliberately *not* a follow-list/opt-in
+mechanism (§8's Phase 3 manifest is where that belongs) — eligibility instead falls out of
+state this integration already has: a remote bridge's metadata is only ever shown if
+`RemoteEntityManager` has already materialized at least one entity from that `bridge_id`
+via §5a. If a metadata message arrives for a bridge we have no entities from, it's dropped
+— there's no device to attach it to and no reason to create one from metadata alone. The
+same three `entity_category: diagnostic` entities used for this bridge's own device are
+created on *their* device the first time metadata is seen, then updated in place on every
+redelivery. If that bridge's last entity is later removed (§5b), its diagnostic entities
+are removed too, for the same reason they were created: nothing left to attach them to.
+Own metadata arriving back via the broker (any client subscribed to
+`bridge/+/metadata` receives its own retained publish) is dropped by a loop guard
+comparing the topic's `bridge_id` against this instance's own slug — same shape as §5's
+loop guard, simpler since there's no JSON `unique_id`/`bridge_id` prefix convention to
+check, just an exact match.

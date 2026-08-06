@@ -20,6 +20,7 @@ from .adapters.legacy_discovery import LegacyDiscoveryAdapter
 from .const import ATTR_CONFIG_ENTRY_ID, CONF_ENTITIES, DOMAIN, SERVICE_REPUBLISH
 from .remote_entity_manager import RemoteEntityManager
 from .scheduler import BridgeScheduler
+from .version import integration_version
 
 PLATFORMS: list[str] = ["sensor"]
 
@@ -31,19 +32,27 @@ class GrapevineRuntimeData:
     scheduler: BridgeScheduler
     remote_entity_manager: RemoteEntityManager
     protocol_adapter: LegacyDiscoveryAdapter
+    integration_version: str
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if not await mqtt_io.async_wait_for_mqtt_client(hass):
         raise ConfigEntryNotReady("MQTT integration is not ready")
 
+    # integration_version() reads manifest.json off disk -- must not run
+    # directly on the event loop (issue #13: this crashed/hung the entry
+    # on every setup, including reload, when called synchronously from
+    # LegacyDiscoveryAdapter's constructor).
+    version = await hass.async_add_executor_job(integration_version)
+
     remote_entity_manager = RemoteEntityManager(hass, entry)
-    adapter = LegacyDiscoveryAdapter(hass, entry, remote_entity_manager)
+    adapter = LegacyDiscoveryAdapter(hass, entry, remote_entity_manager, version)
     scheduler = BridgeScheduler(hass, entry, adapter)
     entry.runtime_data = GrapevineRuntimeData(
         scheduler=scheduler,
         remote_entity_manager=remote_entity_manager,
         protocol_adapter=adapter,
+        integration_version=version,
     )
     entry.async_on_unload(remote_entity_manager.async_unload)
     # GrapevineOptionsFlow's single "Configure" step (data and options
