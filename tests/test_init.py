@@ -71,7 +71,7 @@ def test_setup_entry_wires_scheduler_onto_runtime_data():
     assert isinstance(entry.runtime_data.scheduler, BridgeScheduler)
     assert isinstance(entry.runtime_data.remote_entity_manager, RemoteEntityManager)
     assert isinstance(entry.runtime_data.protocol_adapter, LegacyDiscoveryAdapter)
-    assert entry.runtime_data.integration_version == "0.1.3"
+    assert entry.runtime_data.integration_version == "0.1.4"
 
 
 def test_setup_entry_reads_manifest_version_off_the_event_loop(monkeypatch):
