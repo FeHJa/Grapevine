@@ -7,6 +7,7 @@ for the phased rollout this is Phase 1(b) of.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
 import voluptuous as vol
@@ -23,6 +24,8 @@ from .const import ATTR_CONFIG_ENTRY_ID, CONF_ENTITIES, DOMAIN, SERVICE_REPUBLIS
 from .remote_entity_manager import RemoteEntityManager
 from .scheduler import BridgeScheduler
 from .version import integration_version
+
+_LOGGER = logging.getLogger(__name__)
 
 PLATFORMS: list[str] = ["sensor"]
 
@@ -141,9 +144,24 @@ def _async_cleanup_orphaned_devices(hass: HomeAssistant, entry: ConfigEntry) -> 
     """
     device_registry = dr.async_get(hass)
     entity_registry = er.async_get(hass)
-    for device in dr.async_entries_for_config_entry(device_registry, entry.entry_id):
-        if not er.async_entries_for_device(entity_registry, device.id, include_disabled_entities=True):
-            device_registry.async_remove_device(device.id)
+    devices = dr.async_entries_for_config_entry(device_registry, entry.entry_id)
+    _LOGGER.debug("Orphaned-device cleanup: %d device(s) owned by this entry", len(devices))
+    for device in devices:
+        entities = er.async_entries_for_device(
+            entity_registry, device.id, include_disabled_entities=True
+        )
+        if entities:
+            _LOGGER.debug(
+                "Orphaned-device cleanup: keeping device %s (%s) -- %d entit(y/ies) still attached",
+                device.id,
+                device.name,
+                len(entities),
+            )
+            continue
+        _LOGGER.info(
+            "Removing device %s (%s): no entities left in the registry", device.id, device.name
+        )
+        device_registry.async_remove_device(device.id)
 
 
 async def _async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
