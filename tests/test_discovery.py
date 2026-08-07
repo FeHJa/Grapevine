@@ -9,6 +9,7 @@ from custom_components.grapevine.discovery import (
     build_discovery_payload,
     build_metadata_payload,
     domain_from_entity_id,
+    domain_from_unique_id,
     is_own_message,
     normalize_prefix,
     object_id_from_entity_id,
@@ -49,6 +50,15 @@ def test_object_id_handles_dots_in_object_id():
 def test_domain_from_entity_id():
     assert domain_from_entity_id("binary_sensor.pv_sunny") == "binary_sensor"
     assert domain_from_entity_id("sensor.garage_temperature") == "sensor"
+
+
+def test_domain_from_unique_id_recovers_source_domain():
+    assert domain_from_unique_id("bridge_jakob::binary_sensor.dwd_rain_prediction") == "binary_sensor"
+    assert domain_from_unique_id("bridge_jakob::sensor.garage_temperature") == "sensor"
+
+
+def test_domain_from_unique_id_returns_none_without_bridge_prefix():
+    assert domain_from_unique_id("not_our_convention") is None
 
 
 # --- normalize_prefix ---

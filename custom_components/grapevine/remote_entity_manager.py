@@ -18,6 +18,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import mqtt_io
 from .const import DOMAIN, PROTOCOL_VERSION
+from .discovery import domain_from_unique_id
 from .sensor import BridgedSensorEntity, BridgeMetadataEntities
 
 _LOGGER = logging.getLogger(__name__)
@@ -56,6 +57,15 @@ class RemoteEntityManager:
 
         name = payload_data.get("name")
         device_class = payload_data.get("device_class")
+        if domain_from_unique_id(unique_id) != "sensor":
+            # issue #13 continued: don't blindly trust a peer's
+            # device_class -- it only means what it says if it actually
+            # came from a sensor-domain entity (see discovery.py's
+            # domain_from_unique_id). We materialize a native SensorEntity
+            # regardless of the source's real domain (§2's hardcoded
+            # "sensor" component), so a mismatched value here crashes the
+            # same way it did on the sending side, just locally instead.
+            device_class = None
         unit_of_measurement = payload_data.get("unit_of_measurement")
         device = payload_data.get("device") or {}
         device_identifiers = {(DOMAIN, ident) for ident in device.get("identifiers", [])}

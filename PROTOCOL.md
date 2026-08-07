@@ -160,6 +160,18 @@ redesign in the first place — for the receiving side, today, without waiting f
 collision, hardcoded `sensor` component) — both originate on the far side, in what the
 *sending* bridge publishes, before this instance ever sees the message.
 
+**Amendment (issue #13 continued):** materializing a native entity here means this
+instance is just as exposed to the §3 device_class amendment's failure mode as the
+sending side is — a payload's `device_class` is only safe to apply if it actually came
+from a `sensor`-domain entity, and nothing about the wire format stops a peer (a
+not-yet-updated Grapevine instance, or any other implementation of this protocol) from
+sending an unsafe one. Rather than trust the payload, `RemoteEntityManager` recovers the
+source entity's real domain from the payload's own `unique_id` (`{slug_bridge_name}::
+{entity_id}`, §3) and applies the same domain check before setting it on the native
+entity — for both entity creation and update-in-place on redelivery. A `unique_id` that
+doesn't match this convention at all is treated as unsafe (device_class dropped) rather
+than guessed at.
+
 `local_discovery_prefix` remains listed in §1 as a historical note (it's still what the
 *blueprint* does, and still relevant if you're comparing against another instance running
 the blueprint unmodified) but is no longer part of this integration's config — see
