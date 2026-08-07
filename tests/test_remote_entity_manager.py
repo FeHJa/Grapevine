@@ -191,6 +191,67 @@ def test_unload_unsubscribes_and_clears_tracked_entities():
     assert mqtt._state(hass).subscriptions.get("share/other_bridge/sensor/garage_temperature") == []
 
 
+# --- device_class safety on the receiving side (issue #13 continued) ---
+
+
+def test_discovery_drops_device_class_from_non_sensor_source():
+    # A peer's binary_sensor.dwd_rain_prediction (device_class "moisture",
+    # state "off") crashed HA's own numeric coercion when materialized as
+    # a native sensor entity here -- the receiving side must not trust an
+    # incoming device_class any more than the sending side does.
+    hass = HomeAssistant()
+    manager, added = _make_manager(hass)
+    payload = dict(EXAMPLE_PAYLOAD)
+    payload["unique_id"] = "other_bridge::binary_sensor.dwd_rain_prediction"
+    payload["device_class"] = "moisture"
+
+    _run(manager.async_handle_discovery(DISCOVERY_TOPIC, payload))
+
+    assert added[0]._attr_device_class is None
+
+
+def test_discovery_keeps_device_class_from_sensor_source():
+    hass = HomeAssistant()
+    manager, added = _make_manager(hass)
+
+    _run(manager.async_handle_discovery(DISCOVERY_TOPIC, dict(EXAMPLE_PAYLOAD)))
+
+    assert added[0]._attr_device_class == "humidity"
+
+
+def test_discovery_drops_device_class_when_unique_id_has_no_bridge_prefix():
+    # Doesn't match the "{slug}::{entity_id}" convention at all -- fail
+    # closed (treat as unsafe) rather than guess.
+    hass = HomeAssistant()
+    manager, added = _make_manager(hass)
+    payload = dict(EXAMPLE_PAYLOAD)
+    payload["unique_id"] = "not_our_convention"
+
+    _run(manager.async_handle_discovery(DISCOVERY_TOPIC, payload))
+
+    assert added[0]._attr_device_class is None
+
+
+def test_redelivery_drops_device_class_on_update_path_too():
+    hass = HomeAssistant()
+    manager, added = _make_manager(hass)
+
+    async def scenario():
+        payload = dict(EXAMPLE_PAYLOAD)
+        payload["unique_id"] = "other_bridge::binary_sensor.dwd_rain_prediction"
+        payload["device_class"] = "humidity"  # starts safe (sensor-shaped)
+        await manager.async_handle_discovery(DISCOVERY_TOPIC, payload)
+
+        updated = dict(payload)
+        updated["device_class"] = "moisture"
+        await manager.async_handle_discovery(DISCOVERY_TOPIC, updated)
+
+    _run(scenario())
+
+    assert len(added) == 1  # update, not a second entity
+    assert added[0]._attr_device_class is None
+
+
 # --- async_handle_removal (issue #7) ---
 
 

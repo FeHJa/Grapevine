@@ -74,7 +74,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # support lands (MIGRATION_PLAN.md Decision 3).
     handlers = hass.data.setdefault(DOMAIN, {}).setdefault("republish_handlers", {})
     handlers[entry.entry_id] = scheduler.async_republish_all
-    entry.async_on_unload(lambda: handlers.pop(entry.entry_id, None))
+
+    def _unregister_republish_handler() -> None:
+        # Not `lambda: handlers.pop(...)` -- dict.pop() returns the
+        # removed value (the scheduler method itself), and HA's real
+        # on_unload processing treats a truthy callback return as a job
+        # to schedule as a task, then crashes trying to wrap a plain
+        # bound method as a coroutine. This wrapper discards the result
+        # so the callback returns None, as every other on_unload
+        # callback here does.
+        handlers.pop(entry.entry_id, None)
+
+    entry.async_on_unload(_unregister_republish_handler)
 
     if not hass.services.has_service(DOMAIN, SERVICE_REPUBLISH):
         hass.services.async_register(

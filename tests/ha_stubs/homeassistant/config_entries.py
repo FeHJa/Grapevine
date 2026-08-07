@@ -42,10 +42,21 @@ class ConfigEntry:
 
     async def async_unload(self) -> None:
         """Test helper: run registered on_unload callbacks, most-recently
-        registered first (matches real HA's teardown order), then clear."""
+        registered first (matches real HA's teardown order), then clear.
+
+        Mirrors a real-HA quirk that bit us once already (issue #13's
+        "Failed to Unload" bug): a *truthy* return value from an on_unload
+        callback is treated by real HA as a job to schedule as a task, so
+        a callback that accidentally returns something non-None and
+        non-awaitable (e.g. because it returns a dict.pop() result) blows
+        up there. Raising the same way here means a repeat of that
+        mistake fails a test instead of only ever showing up in a user's
+        log."""
         for func in reversed(self._on_unload):
             result = func()
-            if hasattr(result, "__await__"):
+            if result:
+                if not hasattr(result, "__await__"):
+                    raise TypeError(f"a coroutine was expected, got {result!r}")
                 await result
         self._on_unload.clear()
 

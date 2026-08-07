@@ -25,8 +25,30 @@ def object_id_from_entity_id(entity_id: str) -> str:
     return entity_id.split(".")[-1]
 
 
+def domain_from_entity_id(entity_id: str) -> str:
+    """entity_id.split('.')[0] -- the source entity's real HA domain
+    (e.g. "binary_sensor"), independent of the "sensor" component this
+    bridge always publishes as (§2's known limitation)."""
+    return entity_id.split(".")[0]
+
+
 def normalize_prefix(prefix: str) -> str:
     return prefix if prefix.endswith("/") else f"{prefix}/"
+
+
+def domain_from_unique_id(unique_id: str) -> str | None:
+    """Recovers the source entity's real HA domain from our own unique_id
+    convention (`{slug_bridge_name}::{entity_id}`, §3) -- lets a
+    *receiving* Grapevine instance apply the same device_class safety
+    check as the sending side (issue #13 continued) without trusting an
+    incoming payload's device_class on its own. Every Grapevine sender
+    follows this convention, but nothing enforces it on the wire, so
+    returns None -- "unknown, treat as unsafe" -- for anything that
+    doesn't match it, rather than guessing."""
+    if "::" not in unique_id:
+        return None
+    _, entity_id = unique_id.split("::", 1)
+    return domain_from_entity_id(entity_id)
 
 
 def _title_case_object_id(object_id: str) -> str:
