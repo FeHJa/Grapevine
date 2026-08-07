@@ -1,13 +1,17 @@
-"""Tests for sensor.py's own-bridge diagnostic entities (PROTOCOL.md §9,
-issue #12). Federated (remote-bridge) entity creation is covered in
-test_remote_entity_manager.py -- this file is just the local
-BridgeMetadataEntities holder and its platform wiring.
+"""Tests for sensor.py's BridgeMetadataEntities holder (PROTOCOL.md §9) --
+used for remote bridges' diagnostic entities (test_remote_entity_manager.py
+covers that wiring) and, historically, this bridge's own diagnostic
+entities too, until that local surfacing was reverted per user feedback
+(kept out of the entity list; own metadata is wire-only, see PROTOCOL.md
+§9's "Local surfacing" note). test_setup_entry_creates_no_own_bridge_
+diagnostic_entities below guards against that regressing.
 """
 
 import asyncio
 
 import pytest
 
+from homeassistant.components import mqtt
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
@@ -80,7 +84,7 @@ def test_metadata_entities_update_sets_native_values():
     assert entities.ha_version.native_value == "2026.8.0"
 
 
-# --- end-to-end through async_setup_entry ---
+# --- end-to-end through async_setup_entry: own bridge stays undiagnosed ---
 
 
 def _make_entry(entities: list[str]) -> ConfigEntry:
@@ -101,7 +105,7 @@ async def _drain_hass_tasks(hass: HomeAssistant) -> None:
         await asyncio.gather(*list(hass._tasks), return_exceptions=True)
 
 
-def test_setup_entry_creates_diagnostic_entities_with_values():
+def test_setup_entry_creates_no_own_bridge_diagnostic_entities():
     hass = HomeAssistant()
     entry = _make_entry(["sensor.a"])
     hass.states.async_set("sensor.a", "1")
@@ -114,10 +118,11 @@ def test_setup_entry_creates_diagnostic_entities_with_values():
 
     # unique_id "bridge_jakob::entity_count" -> the fake entity-id slugifier
     # turns "::" into a double underscore.
-    entity_count_state = hass.states.get("sensor.bridge_jakob__entity_count")
-    assert entity_count_state is not None
-    assert entity_count_state.state == "1"
-
-    heartbeat_state = hass.states.get("sensor.bridge_jakob__last_heartbeat")
-    assert heartbeat_state is not None
-    assert heartbeat_state.state != ""
+    assert hass.states.get("sensor.bridge_jakob__entity_count") is None
+    assert hass.states.get("sensor.bridge_jakob__last_heartbeat") is None
+    assert hass.states.get("sensor.bridge_jakob__ha_version") is None
+    # The bridged entity itself is still published as normal.
+    published_topics = {topic for topic, _, _ in mqtt._state(hass).published}
+    assert "share/homeassistant/sensor/a/config" in published_topics
+    # ...and metadata still goes out on the wire, just not as local entities.
+    assert entry.runtime_data.scheduler.last_metadata is not None
