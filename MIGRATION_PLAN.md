@@ -46,7 +46,7 @@ custom_components/grapevine/
 ├── adapters/
 │   └── legacy_discovery.py # LegacyDiscoveryAdapter(ProtocolAdapter) — Phase 1's protocol (§2-5), the only adapter that exists right now
 ├── remote_entity_manager.py # Phase 1b (§5a): create-or-update native entities from incoming federation messages, keyed by unique_id
-├── sensor.py                # Phase 1b: BridgedSensorEntity(SensorEntity); issue #12: BridgeMetadataEntities, this bridge's own diagnostic entities
+├── sensor.py                # Phase 1b: BridgedSensorEntity(SensorEntity); issue #12: BridgeMetadataEntities, per-remote-bridge diagnostic entities
 ├── diagnostics.py           # issue #12: "Download Diagnostics" -- entity list + last published metadata
 ├── version.py                # issue #12: reads this integration's own release version out of manifest.json
 └── strings.json / translations/en.json
@@ -315,10 +315,14 @@ present and unfixed, per §5a — this phase doesn't touch them.
   together with a new metadata message (`PROTOCOL.md` §9) -- each bridge
   publishes its own protocol/integration/HA version, bridged entity count,
   and a last-heartbeat timestamp to a dedicated topic every `time_pattern`
-  tick. Surfaced locally via three `entity_category: diagnostic` entities
-  on a new device representing "this bridge instance" (`sensor.py`'s
-  `BridgeMetadataEntities`), plus the full payload through `diagnostics.py`
-  for "Download Diagnostics".
+  tick, plus the full payload through `diagnostics.py` for "Download
+  Diagnostics". An earlier version of this also surfaced this bridge's
+  own metadata locally as a device with three `entity_category:
+  diagnostic` entities, same as remote bridges get (`sensor.py`'s
+  `BridgeMetadataEntities`) -- reverted per user feedback (added a
+  sensor-less device cluttering the device list, see §9's "Local
+  surfacing (own bridge): reverted" note). Remote bridges still get their
+  device with those three entities; only the own-bridge one was removed.
 - Broaden test coverage (config flow, scheduler timing) toward CI.
 - `button` entity per config entry that calls `grapevine.republish`.
 - **Multi-entry support** (lower priority — not currently needed, but

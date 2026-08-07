@@ -14,7 +14,6 @@ import asyncio
 import logging
 import random
 from datetime import datetime
-from typing import Protocol
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import Event, HomeAssistant, State, callback
@@ -25,14 +24,6 @@ from .const import CONF_ENTITIES, CONF_TIME_PATTERN_MINUTES, JITTER_MAX_SECONDS
 from .protocol import ProtocolAdapter
 
 _LOGGER = logging.getLogger(__name__)
-
-
-class MetadataEntitiesSink(Protocol):
-    """What sensor.py's local diagnostic entities need to expose -- kept
-    as a Protocol here rather than importing sensor.py, so scheduler.py
-    doesn't have to know it's specifically entities doing the receiving."""
-
-    def update(self, metadata: dict) -> None: ...
 
 
 class BridgeScheduler:
@@ -48,10 +39,9 @@ class BridgeScheduler:
         self._entities: list[str] = list(dict.fromkeys(entry.data[CONF_ENTITIES]))
         self._minutes: int = entry.options.get(CONF_TIME_PATTERN_MINUTES, 1)
         self._tasks: set[asyncio.Task] = set()
-        # Set once the sensor platform creates the local diagnostic
-        # entities (issue #12) -- None until then, e.g. briefly during
-        # startup before platform forwarding completes.
-        self._metadata_entities: MetadataEntitiesSink | None = None
+        # Last metadata payload this bridge published (§9) -- kept for
+        # diagnostics.py's "Download Diagnostics". Not surfaced as local
+        # entities; own metadata is wire-only (see PROTOCOL.md §9).
         self.last_metadata: dict | None = None
 
     async def async_setup(self) -> None:
@@ -72,9 +62,6 @@ class BridgeScheduler:
         # Resync retained messages right after (re)start, before the first
         # time_pattern tick — same role as the blueprint's startup behavior.
         self.async_republish_all()
-
-    def set_metadata_entities(self, entities: MetadataEntitiesSink) -> None:
-        self._metadata_entities = entities
 
     def async_republish_all(self) -> None:
         for entity_id in self._entities:
@@ -131,8 +118,6 @@ class BridgeScheduler:
             _LOGGER.exception("Failed to publish bridge metadata")
             return
         self.last_metadata = metadata
-        if self._metadata_entities is not None:
-            self._metadata_entities.update(metadata)
 
     @callback
     def _cancel_pending_tasks(self) -> None:

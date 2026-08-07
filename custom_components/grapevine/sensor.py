@@ -1,13 +1,13 @@
 """Native sensor entity platform.
 
-Two unrelated groups of entities live here:
-- Federated (remote-bridge) entities (PROTOCOL.md §5a) -- platform setup
-  just hands its async_add_entities callback to the config entry's
-  RemoteEntityManager; entity creation itself happens there, driven by
-  incoming federation messages, not a static list.
-- This bridge's own diagnostic entities (PROTOCOL.md §9, issue #12) --
-  a small, fixed set created once at setup, updated by BridgeScheduler
-  each time it publishes a metadata message.
+Federated (remote-bridge) entities (PROTOCOL.md §5a) -- platform setup
+just hands its async_add_entities callback to the config entry's
+RemoteEntityManager; entity creation itself happens there, driven by
+incoming federation messages, not a static list. RemoteEntityManager also
+uses BridgeMetadataEntities (below) for each remote bridge's diagnostic
+entities (§9, issue #12 follow-up) -- this bridge's *own* metadata is only
+published to the wire, not surfaced locally (deliberately reverted, see
+PROTOCOL.md §9's "Local surfacing" note).
 """
 
 from __future__ import annotations
@@ -18,23 +18,13 @@ from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import CONF_BRIDGE_NAME, PROTOCOL_VERSION, DOMAIN
-from .discovery import slugify_bridge_name
+from .const import DOMAIN
 
 
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     entry.runtime_data.remote_entity_manager.set_add_entities_callback(async_add_entities)
-
-    metadata_entities = BridgeMetadataEntities(
-        bridge_name=entry.data[CONF_BRIDGE_NAME],
-        slug_bridge_name=slugify_bridge_name(entry.data[CONF_BRIDGE_NAME]),
-        integration_version=entry.runtime_data.integration_version,
-        protocol_version=PROTOCOL_VERSION,
-    )
-    async_add_entities(metadata_entities.entities)
-    entry.runtime_data.scheduler.set_metadata_entities(metadata_entities)
 
 
 class BridgedSensorEntity(SensorEntity):
@@ -107,12 +97,11 @@ class _BridgeDiagnosticSensor(SensorEntity):
 
 
 class BridgeMetadataEntities:
-    """The fixed set of diagnostic entities for one bridge's device (§9,
-    issue #12) -- entity count, last heartbeat, HA version. Used for this
-    bridge's own device (created once at platform setup, pushed to by
-    BridgeScheduler.set_metadata_entities on every publish) and, per
-    remote bridge, by RemoteEntityManager once that bridge's metadata is
-    seen for the first time (issue #12 follow-up)."""
+    """The fixed set of diagnostic entities for one remote bridge's device
+    (§9, issue #12 follow-up) -- entity count, last heartbeat, HA version.
+    Created by RemoteEntityManager the first time that bridge's metadata
+    is seen. This bridge's own metadata is deliberately not surfaced this
+    way (see PROTOCOL.md §9) -- only published to the wire."""
 
     def __init__(
         self,

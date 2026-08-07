@@ -257,22 +257,15 @@ def test_clock_tick_republishes_metadata_alongside_entities(monkeypatch):
     assert adapter.published_metadata == [1]
 
 
-def test_metadata_entities_are_updated_after_publish(monkeypatch):
+def test_last_metadata_is_recorded_after_publish(monkeypatch):
+    # last_metadata is kept for diagnostics.py's "Download Diagnostics"
+    # only -- own metadata is no longer surfaced as local entities (issue
+    # #12 follow-up, reverted per user feedback).
     _no_jitter(monkeypatch)
     hass, entry = _make_hass_entry(["sensor.a"])
     hass.states.async_set("sensor.a", "x")
     adapter = RecordingAdapter()
     sched = BridgeScheduler(hass, entry, adapter)
-
-    class RecordingSink:
-        def __init__(self) -> None:
-            self.updates: list[dict] = []
-
-        def update(self, metadata: dict) -> None:
-            self.updates.append(metadata)
-
-    sink = RecordingSink()
-    sched.set_metadata_entities(sink)
 
     async def scenario():
         await sched.async_setup()
@@ -280,7 +273,6 @@ def test_metadata_entities_are_updated_after_publish(monkeypatch):
 
     _run(scenario())
 
-    assert sink.updates == [{"entity_count": 1}]
     assert sched.last_metadata == {"entity_count": 1}
 
 

@@ -307,13 +307,19 @@ republish (§6) — at startup, on the periodic clock-aligned trigger, and on-de
 `republish` service — rather than a second, separately configurable interval. Subject to
 the same 0-9s jitter as any other publish.
 
-**Local surfacing:** this bridge's own metadata is also shown locally, since publishing it
-to the wire doesn't make it visible to the person running this instance. A device
-representing "this bridge instance" (distinct from the devices §5a creates for *remote*
-bridges) carries `integration_version`/`protocol_version` in its `sw_version`, plus three
-`entity_category: diagnostic` entities — entity count, last heartbeat, and HA version —
-that update every time a metadata message is published. The full payload is also
-available via Home Assistant's "Download Diagnostics" for support requests.
+**Local surfacing (own bridge): reverted.** An earlier version of this amendment also
+surfaced this bridge's own metadata locally — a device representing "this bridge
+instance" with three `entity_category: diagnostic` entities (entity count, last
+heartbeat, HA version). In practice this just added a device with no sensors on it to
+every Grapevine install, cluttering the integration's device list without adding
+information the user didn't already have some other way (they're the one running this
+instance). Removed per user feedback; this bridge's own metadata is now wire-only —
+still published every tick as documented above, still available via Home Assistant's
+"Download Diagnostics" for support requests (`diagnostics.py` reads the same
+`last_metadata` the scheduler already tracks), just not materialized as a local device or
+entities. **Remote** bridges' metadata (next amendment) is unaffected by this — that's a
+materially different situation, since a remote bridge's device is something the user
+doesn't otherwise have visibility into locally.
 
 **Amendment: consuming other bridges' metadata (issue #12 follow-up).** Status:
 implemented. `LegacyDiscoveryAdapter` also subscribes to
