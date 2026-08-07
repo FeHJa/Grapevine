@@ -323,6 +323,19 @@ present and unfixed, per §5a — this phase doesn't touch them.
   sensor-less device cluttering the device list, see §9's "Local
   surfacing (own bridge): reverted" note). Remote bridges still get their
   device with those three entities; only the own-bridge one was removed.
+- ~~Clean up devices orphaned by removing local surfacing~~ **Done**: the
+  own-bridge device change above left existing installs with a stranded
+  device (its three diagnostic entities no longer recreated, but still
+  sitting in the registry) that HA won't offer a UI way to delete while
+  the config entry is loaded. `__init__.py`'s `_async_cleanup_orphaned_devices`
+  runs on every `async_setup_entry` and removes any device owned by this
+  entry with zero entities left in the entity registry. Deliberately
+  registry-only and startup-only, not an "ignore this bridge" or
+  forget/unforget mechanism -- a device that still has entities is by
+  definition in use and is never touched, whether or not the remote
+  bridge is currently publishing, so this can't delete anything active
+  and can't affect entity history (which is already gone once the
+  entities themselves are gone).
 - Broaden test coverage (config flow, scheduler timing) toward CI.
 - `button` entity per config entry that calls `grapevine.republish`.
 - **Multi-entry support** (lower priority — not currently needed, but

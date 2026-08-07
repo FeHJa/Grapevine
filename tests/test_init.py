@@ -10,6 +10,8 @@ from homeassistant.components import mqtt
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady, ServiceValidationError
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 
 from custom_components import grapevine
 from custom_components.grapevine import scheduler as scheduler_module
@@ -208,3 +210,54 @@ def test_remove_entry_is_a_noop_when_setup_never_completed():
     _run(grapevine.async_remove_entry(hass, entry))  # must not raise
 
     assert mqtt._state(hass).published == []
+
+
+def test_setup_entry_removes_orphaned_device_with_no_entities():
+    # Simulates the #12-follow-up regression: an own-bridge (or remote
+    # bridge) device left behind in the registry with zero entities --
+    # either because the code stopped creating them, or the user deleted
+    # them by hand. HA won't offer a UI way to delete the device itself
+    # while the config entry is loaded, so this must happen automatically.
+    hass = HomeAssistant()
+    entry = _make_entry("entry1", "Bridge Jakob", ["sensor.a"])
+    orphan = dr.async_get(hass).async_get_or_create(
+        config_entry_id="entry1",
+        identifiers={(DOMAIN, "bridge_jakob")},
+        name="Bridge Jakob",
+    )
+
+    _run(grapevine.async_setup_entry(hass, entry))
+
+    assert dr.async_get(hass).async_get(orphan.id) is None
+
+
+def test_setup_entry_keeps_device_that_still_has_entities():
+    # The safety property the cleanup relies on: a device with at least
+    # one entity is never touched, so an active bridge can never be
+    # deleted by this pass regardless of whether it's currently publishing.
+    hass = HomeAssistant()
+    entry = _make_entry("entry1", "Bridge Jakob", ["sensor.a"])
+    active = dr.async_get(hass).async_get_or_create(
+        config_entry_id="entry1",
+        identifiers={(DOMAIN, "some_remote_bridge")},
+        name="Some Remote Bridge",
+    )
+    er.async_get(hass)._register("sensor.some_remote_bridge_temp", active.id)
+
+    _run(grapevine.async_setup_entry(hass, entry))
+
+    assert dr.async_get(hass).async_get(active.id) is not None
+
+
+def test_setup_entry_does_not_touch_orphaned_devices_from_other_entries():
+    hass = HomeAssistant()
+    entry = _make_entry("entry1", "Bridge Jakob", ["sensor.a"])
+    other_entrys_orphan = dr.async_get(hass).async_get_or_create(
+        config_entry_id="entry2",
+        identifiers={(DOMAIN, "other_bridge")},
+        name="Other Bridge",
+    )
+
+    _run(grapevine.async_setup_entry(hass, entry))
+
+    assert dr.async_get(hass).async_get(other_entrys_orphan.id) is not None
