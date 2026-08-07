@@ -11,10 +11,16 @@ from homeassistant.const import EntityCategory
 
 
 class SensorDeviceClass(StrEnum):
-    """Not the real, exhaustive enum -- just enough real members (and a
-    deliberate absence of binary_sensor-only values like "light"/"motion")
-    for tests to exercise the issue #13 device_class filtering against
-    something real-shaped rather than a hand-invented list."""
+    """Not the real, exhaustive enum -- just enough real members for tests
+    to exercise the issue #13 device_class filtering against something
+    real-shaped rather than a hand-invented list. Deliberately includes
+    "moisture" alongside the domain-only-safe members: in real HA it's a
+    legitimate SensorDeviceClass name (numeric, e.g. soil moisture %) that
+    ALSO happens to be a valid BinarySensorDeviceClass name (boolean,
+    "wet"/"dry") -- exactly the name-matches-but-domain-doesn't case that
+    device_class-name filtering alone can't catch (see legacy_discovery.py's
+    module comment). Deliberately excludes true binary_sensor-only values
+    like "light"/"motion", which name-filtering alone does catch."""
 
     TEMPERATURE = "temperature"
     HUMIDITY = "humidity"
@@ -24,6 +30,7 @@ class SensorDeviceClass(StrEnum):
     CURRENT = "current"
     VOLTAGE = "voltage"
     ILLUMINANCE = "illuminance"
+    MOISTURE = "moisture"
 
 
 class SensorEntity:

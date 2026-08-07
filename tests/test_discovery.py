@@ -8,6 +8,7 @@ from custom_components.grapevine.const import PROTOCOL_VERSION, SW_VERSION
 from custom_components.grapevine.discovery import (
     build_discovery_payload,
     build_metadata_payload,
+    domain_from_entity_id,
     is_own_message,
     normalize_prefix,
     object_id_from_entity_id,
@@ -43,6 +44,11 @@ def test_object_id_strips_domain():
 def test_object_id_handles_dots_in_object_id():
     # split('.')[-1] ported verbatim: only the last segment is used.
     assert object_id_from_entity_id("sensor.weird.id") == "id"
+
+
+def test_domain_from_entity_id():
+    assert domain_from_entity_id("binary_sensor.pv_sunny") == "binary_sensor"
+    assert domain_from_entity_id("sensor.garage_temperature") == "sensor"
 
 
 # --- normalize_prefix ---

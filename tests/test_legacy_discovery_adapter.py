@@ -114,6 +114,29 @@ def test_publish_own_entity_drops_device_class_invalid_for_sensor_platform():
     assert "device_class" not in payload
 
 
+def test_publish_own_entity_drops_device_class_that_names_match_but_wrong_domain():
+    # issue #13 continued: "moisture" IS a valid SensorDeviceClass name
+    # (unlike "light"), so the name-only check alone doesn't drop it --
+    # but it's a numeric device class in the sensor domain while this
+    # source is a binary_sensor with an "on"/"off" state. Forwarding it
+    # made HA's own numeric coercion crash on the receiving side
+    # ("...has device class 'moisture'... thus indicating it has a
+    # numeric value; however, it has the non-numeric value: 'off'").
+    hass = HomeAssistant()
+    adapter = _make_adapter(hass, RecordingEntityManager())
+    state = State(
+        "binary_sensor.dwd_rain_prediction",
+        "off",
+        {"friendly_name": "DWD Rain Prediction", "device_class": "moisture"},
+    )
+
+    _run(adapter.publish_own_entity("binary_sensor.dwd_rain_prediction", state))
+
+    _, discovery_payload, _ = _published(hass)[0]
+    payload = json.loads(discovery_payload)
+    assert "device_class" not in payload
+
+
 def test_publish_own_entity_keeps_device_class_valid_for_sensor_platform():
     hass = HomeAssistant()
     adapter = _make_adapter(hass, RecordingEntityManager())

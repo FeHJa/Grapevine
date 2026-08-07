@@ -90,15 +90,25 @@ logic. See §8 for why it's there.
 Port these regexes verbatim — do not rewrite or "simplify" them.
 
 **Amendment (issue #13):** step 1 only uses the source entity's actual `device_class` if
-it's also a valid value for HA's `sensor` platform (`SensorDeviceClass`). Since the
-`component` segment is hardcoded to `sensor` regardless of the source entity's real domain
-(the known limitation just above), a `binary_sensor`'s `device_class` (e.g. `light`,
-`motion`, `moisture` — valid for `binary_sensor`, not for `sensor`) is *not* forwarded
-verbatim; step 1 is skipped for it and resolution falls through to step 2/3 as if the
-entity had no `device_class` at all. Forwarding it unfiltered made a receiver's own `mqtt`
-integration reject the entire discovery message outright (invalid enum value), which is
-worse than omitting the field — a receiver still gets a working, if less specific, entity
-this way.
+the source entity's real domain is also `sensor`. Since the `component` segment is
+hardcoded to `sensor` regardless of the source entity's real domain (the known limitation
+just above), any other domain's `device_class` is *not* forwarded verbatim; step 1 is
+skipped for it and resolution falls through to step 2/3 as if the entity had no
+`device_class` at all. This is a domain check, not a device_class-name check, for two
+distinct failure modes seen in practice:
+- Some names (`light`, `motion`, ...) are only valid for `binary_sensor`, not `sensor` at
+  all — forwarding them unfiltered made a receiver's own `mqtt` integration reject the
+  entire discovery message outright (invalid enum value).
+- Some names (`moisture`, `battery`, `power`, ...) are valid `SensorDeviceClass` members
+  *and* valid `BinarySensorDeviceClass` members, with different value semantics — numeric
+  for `sensor`, boolean `on`/`off` for `binary_sensor`. A device_class-name check alone
+  lets these through since the name is legitimate; a `binary_sensor`'s `on`/`off` state
+  then crashes HA's own numeric coercion on the receiving side. Only a domain check catches
+  this, since there's no device_class name that's safe to forward from a non-`sensor`
+  source.
+
+Either way, omitting the field is safe — a receiver still gets a working, if less
+specific, entity.
 
 ## 4. State payload
 

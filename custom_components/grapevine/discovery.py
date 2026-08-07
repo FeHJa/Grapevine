@@ -25,6 +25,13 @@ def object_id_from_entity_id(entity_id: str) -> str:
     return entity_id.split(".")[-1]
 
 
+def domain_from_entity_id(entity_id: str) -> str:
+    """entity_id.split('.')[0] -- the source entity's real HA domain
+    (e.g. "binary_sensor"), independent of the "sensor" component this
+    bridge always publishes as (§2's known limitation)."""
+    return entity_id.split(".")[0]
+
+
 def normalize_prefix(prefix: str) -> str:
     return prefix if prefix.endswith("/") else f"{prefix}/"
 

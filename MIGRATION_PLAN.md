@@ -422,6 +422,21 @@ subscription model:
    network, subprocess) must go through `hass.async_add_executor_job` the
    same way — this class of bug is invisible to the test harness, so it
    has to be caught by code review, not by `pytest`.
+8. **`entry.async_on_unload` callbacks must return `None`** (learned the
+   hard way, issue #13 continued): `lambda: handlers.pop(entry.entry_id,
+   None)` in `__init__.py` looked like a harmless cleanup callback, but
+   `dict.pop()` returns the *removed value* — here, the
+   `scheduler.async_republish_all` bound method that was stored at that
+   key. Real HA's on-unload processing treats a truthy callback return as
+   a job to schedule as a task, tries to wrap that bound method as a
+   coroutine, and crashes with "Failed to Unload" on every unload
+   (including every reload the Configure flow triggers). Fixed by wrapping
+   the cleanup in a named function that discards the pop's result. Unlike
+   decision 7, this one *is* now caught by the test harness — `ConfigEntry
+   .async_unload()`'s fake now mirrors this exact real-HA behavior
+   (raises if a callback returns something truthy and non-awaitable), so
+   any future on_unload callback making the same mistake fails a test
+   instead of only showing up in a user's log.
 
 Phase 1 work can start directly from the file layout above, using
 `PROTOCOL.md` as the acceptance spec for each module.

@@ -25,6 +25,7 @@ from ..const import CONF_BRIDGE_NAME, CONF_SENSOR_VALUE_PREFIX, CONF_SHARED_DISC
 from ..discovery import (
     build_discovery_payload,
     build_metadata_payload,
+    domain_from_entity_id,
     is_own_message,
     object_id_from_entity_id,
     parse_federation_topic,
@@ -38,12 +39,20 @@ _LOGGER = logging.getLogger(__name__)
 
 # PROTOCOL.md §2: own entities are always published with component
 # hardcoded to "sensor", regardless of the source entity's real domain.
-# A device_class that's only valid for another platform (e.g.
-# binary_sensor's "light"/"motion"/"moisture") must not be forwarded
-# verbatim -- HA's own mqtt integration validates device_class against
-# SensorDeviceClass for a "sensor" discovery payload and rejects the
-# whole message outright if it doesn't match, which is what a
-# blueprint-based receiver's local mqtt integration does (issue #13).
+# A device_class from a non-"sensor" source must not be forwarded
+# verbatim, for two distinct reasons (issue #13):
+#  - some names are only valid for another platform at all (e.g.
+#    binary_sensor's "light"/"motion" aren't valid SensorDeviceClass
+#    values) -- HA's own mqtt integration rejects the whole discovery
+#    message outright.
+#  - some names are valid SensorDeviceClass members but imply a numeric
+#    value (e.g. "moisture", "battery", "power" all exist on both
+#    BinarySensorDeviceClass and SensorDeviceClass, with different value
+#    semantics) -- a binary_sensor's "on"/"off" state crashes HA's own
+#    numeric coercion when forced into one of these. Checking the name
+#    against SensorDeviceClass alone catches the first case but not the
+#    second; checking the source domain catches both, since there's no
+#    safe way to forward *any* device_class from a non-sensor source.
 _VALID_SENSOR_DEVICE_CLASSES = frozenset(member.value for member in SensorDeviceClass)
 
 
@@ -79,10 +88,14 @@ class LegacyDiscoveryAdapter(ProtocolAdapter):
     async def publish_own_entity(self, entity_id: str, state: State) -> None:
         object_id = object_id_from_entity_id(entity_id)
         device_class = state.attributes.get("device_class")
-        if device_class not in _VALID_SENSOR_DEVICE_CLASSES:
-            # Not valid for the "sensor" component we always publish as --
-            # drop it and let §3's regex-table fallback (or omission) take
-            # over, same as when the entity has no device_class at all.
+        is_sensor_source = domain_from_entity_id(entity_id) == "sensor"
+        if not is_sensor_source or device_class not in _VALID_SENSOR_DEVICE_CLASSES:
+            # Not safe to forward as-is: either the source isn't actually
+            # a "sensor" (its device_class may name-match but carry
+            # different value semantics -- see the module comment above),
+            # or the name itself isn't valid for "sensor" at all. Drop it
+            # and let §3's regex-table fallback (or omission) take over,
+            # same as when the entity has no device_class at all.
             device_class = None
         payload = build_discovery_payload(
             entity_id=entity_id,
