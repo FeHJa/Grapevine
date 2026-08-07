@@ -137,13 +137,23 @@ class ConfigEntriesRegistry:
 
     def _make_add_entities(self, key: tuple[str, str]):
         def _add_entities(new_entities: Iterable[Any], update_before_add: bool = False) -> None:
+            from .helpers import device_registry as dr
             from .helpers import entity_registry as er
 
             for entity in new_entities:
                 entity.hass = self._hass
                 entity.entity_id = f"{key[1]}.{_slugify_entity_id(entity.unique_id)}"
                 self._platform_entities[key].append(entity)
-                er.async_get(self._hass)._register(entity.entity_id)
+                device_id = None
+                device_info = getattr(entity, "_attr_device_info", None) or {}
+                identifiers = device_info.get("identifiers")
+                if identifiers:
+                    device_id = dr.async_get(self._hass).async_get_or_create(
+                        config_entry_id=key[0],
+                        identifiers=identifiers,
+                        name=device_info.get("name"),
+                    ).id
+                er.async_get(self._hass)._register(entity.entity_id, device_id)
 
         return _add_entities
 

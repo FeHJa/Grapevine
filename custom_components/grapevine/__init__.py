@@ -14,6 +14,8 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import ConfigEntryNotReady, ServiceValidationError
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 
 from . import mqtt_io
 from .adapters.legacy_discovery import LegacyDiscoveryAdapter
@@ -38,6 +40,8 @@ class GrapevineRuntimeData:
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if not await mqtt_io.async_wait_for_mqtt_client(hass):
         raise ConfigEntryNotReady("MQTT integration is not ready")
+
+    _async_cleanup_orphaned_devices(hass, entry)
 
     # integration_version() reads manifest.json off disk -- must not run
     # directly on the event loop (issue #13: this crashed/hung the entry
@@ -121,6 +125,25 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
         return
     for entity_id in entry.data.get(CONF_ENTITIES, []):
         await runtime_data.protocol_adapter.async_depublish_entity(entity_id)
+
+
+def _async_cleanup_orphaned_devices(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Startup housekeeping: remove any device this entry owns that has no
+    entities left in the entity registry.
+
+    Registry-only, so it can never touch a device that's actually in use --
+    an entity registry entry persists across restarts regardless of
+    whether RemoteEntityManager has re-materialized it in memory yet, so
+    "zero entities" here really does mean nothing is attached anymore (e.g.
+    the pre-#12-follow-up own-bridge diagnostic device, or a remote
+    bridge's device after its entities were deleted by hand) -- not merely
+    "nothing has arrived over MQTT since HA restarted."
+    """
+    device_registry = dr.async_get(hass)
+    entity_registry = er.async_get(hass)
+    for device in dr.async_entries_for_config_entry(device_registry, entry.entry_id):
+        if not er.async_entries_for_device(entity_registry, device.id, include_disabled_entities=True):
+            device_registry.async_remove_device(device.id)
 
 
 async def _async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
