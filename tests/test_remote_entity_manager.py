@@ -544,10 +544,11 @@ def test_depublish_bridge_publishes_empty_retained_to_every_tracked_topic():
 
     removed = _run(scenario())
 
-    assert removed == 2
+    assert removed == 3  # two entity discovery topics + the bridge's metadata topic
     published = {(topic, payload, retain) for topic, payload, retain in mqtt._state(hass).published}
     assert (DISCOVERY_TOPIC, "", True) in published
     assert (second_topic, "", True) in published
+    assert ("share/homeassistant/bridge/other_bridge/metadata", "", True) in published
 
 
 def test_depublish_bridge_removes_entities_locally_immediately():
@@ -585,7 +586,7 @@ def test_depublish_bridge_also_removes_its_diagnostic_entities():
     assert hass.states.get("sensor.other_bridge__entity_count") is None
 
 
-def test_depublish_bridge_is_a_noop_for_device_with_no_entities():
+def test_depublish_bridge_still_clears_metadata_for_device_with_no_entities():
     hass = HomeAssistant()
     manager, added = _make_manager(hass)
     empty_device = dr.async_get(hass).async_get_or_create(
@@ -596,8 +597,13 @@ def test_depublish_bridge_is_a_noop_for_device_with_no_entities():
 
     removed = _run(manager.async_depublish_bridge("ghost_bridge", empty_device.id))
 
-    assert removed == 0
-    assert mqtt._state(hass).published == []
+    # No entities to clear, but the bridge's own metadata topic (§9) is
+    # unconditionally cleared too -- a human has already decided this
+    # identity is dead, its heartbeat side-channel shouldn't linger either.
+    assert removed == 1
+    assert mqtt._state(hass).published == [
+        ("share/homeassistant/bridge/ghost_bridge/metadata", "", True)
+    ]
 
 
 def test_depublish_bridge_does_not_touch_a_different_bridges_entity():
@@ -619,10 +625,12 @@ def test_depublish_bridge_does_not_touch_a_different_bridges_entity():
 
     removed = _run(scenario())
 
-    assert removed == 1
+    assert removed == 2  # "other_bridge"'s one entity + its metadata topic
     assert len(added) == 2
     assert "third_bridge::sensor.attic_humidity" in manager._entities
     assert "other_bridge::sensor.garage_humidity" not in manager._entities
+    published_topics = {topic for topic, _, _ in mqtt._state(hass).published}
+    assert "share/homeassistant/bridge/third_bridge/metadata" not in published_topics
 
 
 def test_depublish_bridge_removes_a_stale_entity_never_rediscovered_this_session():
@@ -647,9 +655,10 @@ def test_depublish_bridge_removes_a_stale_entity_never_rediscovered_this_session
 
     removed = _run(manager.async_depublish_bridge("stale_bridge", device.id))
 
-    assert removed == 1
+    assert removed == 2  # the entity's discovery topic + the bridge's metadata topic
     published = {(topic, payload, retain) for topic, payload, retain in mqtt._state(hass).published}
     assert ("share/homeassistant/sensor/garage_humidity/config", "", True) in published
+    assert ("share/homeassistant/bridge/stale_bridge/metadata", "", True) in published
     assert er.async_get(hass).async_get("sensor.stale_bridge_garage_humidity") is None
 
 
@@ -676,9 +685,10 @@ def test_depublish_bridge_clears_a_stale_entity_using_the_older_dot_unique_id_co
 
     removed = _run(manager.async_depublish_bridge("grapevine_jakob", device.id))
 
-    assert removed == 1
+    assert removed == 2  # the entity's discovery topic + the bridge's metadata topic
     published = {(topic, payload, retain) for topic, payload, retain in mqtt._state(hass).published}
     assert ("share/homeassistant/sensor/battery_level_nominal/config", "", True) in published
+    assert ("share/homeassistant/bridge/grapevine_jakob/metadata", "", True) in published
     assert er.async_get(hass).async_get("sensor.grapevine_jakob_battery_level_nominal") is None
 
 

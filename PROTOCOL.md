@@ -241,6 +241,15 @@ finds, it:
 Diagnostic entities (§9) have no discovery topic of their own — they're removed as a
 side effect once every real entity for the bridge is gone, same as an organic removal.
 
+**Also clears the bridge's own metadata topic (§9).** Unconditionally, regardless of
+how many (if any) real entities were found — a human has already decided this identity
+is dead, so its "here's my heartbeat" side-channel shouldn't keep sitting there
+retained forever either, same reasoning as clearing its entities. §9's metadata
+messages otherwise have no removal signal of their own (an empty payload on
+`bridge/+/metadata` is normally just ignored, see §9) — this is the one path that
+clears one anyway, because a human has explicitly named this bridge as dead rather than
+merely quiet.
+
 **Bugfix: reconstructing the topic must accept either unique_id convention.** A bridge
 long dead enough to need this service is exactly the kind of peer likely to predate the
 `::` separator §3 specifies today (e.g. a pre-rename install using the older
