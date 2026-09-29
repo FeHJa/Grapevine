@@ -37,7 +37,15 @@ class BridgedSensorEntity(SensorEntity):
     fire far more often (every state change) than metadata (once per
     time_pattern tick), so the meaningless "1.0.3" kept winning and hiding
     the real version. Purely a receiving-side display choice -- the
-    outgoing wire payload (discovery.py) is unchanged."""
+    outgoing wire payload (discovery.py) is unchanged.
+
+    device_info["model"] is set to bridge_id, not the human-chosen
+    bridge_name -- two peers can easily end up with the same bridge_name
+    (e.g. both left it at its default), but bridge_id is, in practice,
+    always unique (loop prevention, PROTOCOL.md §5, depends on it). Model
+    is secondary/detail info, unlike name, so this doesn't change what a
+    device is called anywhere it's listed -- only what's shown when you
+    look closer (e.g. the saulach.depublish_bridge device picker)."""
 
     _attr_should_poll = False
 
@@ -50,6 +58,7 @@ class BridgedSensorEntity(SensorEntity):
         unit_of_measurement: str | None,
         device_identifiers: set[tuple[str, str]],
         device_name: str | None,
+        bridge_id: str | None,
     ) -> None:
         self._attr_unique_id = unique_id
         self._attr_name = name
@@ -58,6 +67,7 @@ class BridgedSensorEntity(SensorEntity):
         self._attr_device_info = {
             "identifiers": device_identifiers,
             "name": device_name,
+            "model": bridge_id,
         }
 
     def set_native_value(self, value: str) -> None:
@@ -87,6 +97,7 @@ class BridgedSensorEntity(SensorEntity):
         unit_of_measurement: str | None,
         device_identifiers: set[tuple[str, str]],
         device_name: str | None,
+        bridge_id: str | None,
     ) -> None:
         self._attr_name = name
         self._attr_device_class = device_class
@@ -94,6 +105,7 @@ class BridgedSensorEntity(SensorEntity):
         self._attr_device_info = {
             "identifiers": device_identifiers,
             "name": device_name,
+            "model": bridge_id,
         }
         self.async_write_ha_state()
 
@@ -139,6 +151,7 @@ class BridgeMetadataEntities:
         device_info = {
             "identifiers": {(DOMAIN, slug_bridge_name)},
             "name": bridge_name,
+            "model": slug_bridge_name,
             "sw_version": f"{integration_version} (protocol v{protocol_version})",
         }
         self.entity_count = _BridgeDiagnosticSensor(
