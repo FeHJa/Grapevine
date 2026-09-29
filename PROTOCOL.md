@@ -241,6 +241,15 @@ finds, it:
 Diagnostic entities (§9) have no discovery topic of their own — they're removed as a
 side effect once every real entity for the bridge is gone, same as an organic removal.
 
+**Also clears the bridge's own metadata topic (§9).** Unconditionally, regardless of
+how many (if any) real entities were found — a human has already decided this identity
+is dead, so its "here's my heartbeat" side-channel shouldn't keep sitting there
+retained forever either, same reasoning as clearing its entities. §9's metadata
+messages otherwise have no removal signal of their own (an empty payload on
+`bridge/+/metadata` is normally just ignored, see §9) — this is the one path that
+clears one anyway, because a human has explicitly named this bridge as dead rather than
+merely quiet.
+
 **Bugfix: reconstructing the topic must accept either unique_id convention.** A bridge
 long dead enough to need this service is exactly the kind of peer likely to predate the
 `::` separator §3 specifies today (e.g. a pre-rename install using the older
@@ -398,3 +407,14 @@ set it, `"1.0.3"` would win almost every time and permanently hide the real vers
 bridge with no metadata yet (a blueprint-based peer, which never sends §9 at all, or a
 Saulach peer whose first `time_pattern` tick hasn't landed) simply shows no firmware
 version rather than the misleading constant.
+
+**Remote device's displayed name.** A remote bridge's `bridge_name` (§1) is a
+human-chosen label, not guaranteed unique across instances — two peers can easily end
+up with the same one (e.g. both left it at its default). `bridge_id`, derived from it
+by slugifying, always is unique in practice (loop prevention, §5, depends on it). Both
+`BridgedSensorEntity` (§5a/§3) and `BridgeMetadataEntities` (above) show the device's
+name as `"{bridge_name} ({bridge_id})"` rather than the bare name, so a lookalike name
+never leaves the *actual* peer ambiguous — this matters most in the
+`saulach.depublish_bridge` device picker, where picking the wrong lookalike durably
+clears the wrong peer's entities. Purely a receiving-side display choice, same shape as
+the firmware note above; the outgoing wire payload (§3) is unchanged.

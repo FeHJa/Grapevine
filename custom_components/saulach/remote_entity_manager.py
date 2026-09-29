@@ -24,6 +24,20 @@ from .sensor import BridgedSensorEntity, BridgeMetadataEntities
 _LOGGER = logging.getLogger(__name__)
 
 
+def _device_display_name(bridge_name: str | None, bridge_id: str | None) -> str | None:
+    """A remote bridge's human-chosen name isn't unique -- two peers can
+    easily end up with the same one (e.g. both left `bridge_name` at its
+    default). `bridge_id` always is, so suffixing it makes every place
+    that shows this device's name (Settings > Devices, and critically
+    the `saulach.depublish_bridge` device picker, where picking the
+    wrong one durably clears the wrong peer's entities) unambiguous even
+    when two bridges' names look the same. Purely a receiving-side
+    display choice -- the outgoing wire payload (§3) is unchanged."""
+    if not bridge_id:
+        return bridge_name
+    return f"{bridge_name} ({bridge_id})" if bridge_name else bridge_id
+
+
 class RemoteEntityManager:
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         self._hass = hass
@@ -71,6 +85,7 @@ class RemoteEntityManager:
         device_identifiers = {(DOMAIN, ident) for ident in device.get("identifiers", [])}
         device_name = device.get("name")
         bridge_id = next(iter(device.get("identifiers", [])), None)
+        display_device_name = _device_display_name(device_name, bridge_id)
 
         existing = self._entities.get(unique_id)
         if existing is not None:
@@ -79,7 +94,7 @@ class RemoteEntityManager:
                 device_class=device_class,
                 unit_of_measurement=unit_of_measurement,
                 device_identifiers=device_identifiers,
-                device_name=device_name,
+                device_name=display_device_name,
             )
             self._topic_to_unique_id[topic] = unique_id
             if bridge_id is not None:
@@ -92,7 +107,7 @@ class RemoteEntityManager:
             device_class=device_class,
             unit_of_measurement=unit_of_measurement,
             device_identifiers=device_identifiers,
-            device_name=device_name,
+            device_name=display_device_name,
         )
 
         if self._add_entities_callback is None:
@@ -176,7 +191,11 @@ class RemoteEntityManager:
         .async_remove() on). Diagnostic entities (§9) have no discovery
         topic of their own; anything still left on the device afterwards
         -- diagnostics that were never live this session either -- is
-        swept up directly too. Returns how many discovery topics were
+        swept up directly too. Also clears the bridge's own metadata
+        topic (§9) unconditionally -- a human has already decided this
+        identity is dead, so its "here's my heartbeat" side-channel
+        should stop reappearing too, not just its entities. Returns how
+        many topics (entity discovery + the one metadata topic) were
         published to.
 
         unique_id parsing accepts either separator convention this
@@ -213,6 +232,10 @@ class RemoteEntityManager:
             if entity_registry.async_get(reg_entry.entity_id) is not None:
                 entity_registry.async_remove(reg_entry.entity_id)
 
+        metadata_topic = f"{shared_discovery_prefix}bridge/{bridge_id}/metadata"
+        await mqtt_io.async_publish(self._hass, metadata_topic, "", retain=True)
+        published += 1
+
         self._remote_metadata_entities.pop(bridge_id, None)
         self._bridge_entity_counts.pop(bridge_id, None)
         self._bridge_names.pop(bridge_id, None)
@@ -232,7 +255,7 @@ class RemoteEntityManager:
             if self._add_entities_callback is None:
                 return
             metadata_entities = BridgeMetadataEntities(
-                bridge_name=self._bridge_names.get(bridge_id, bridge_id),
+                bridge_name=_device_display_name(self._bridge_names.get(bridge_id), bridge_id),
                 slug_bridge_name=bridge_id,
                 integration_version=payload_data.get("integration_version", "unknown"),
                 protocol_version=payload_data.get("protocol_version", PROTOCOL_VERSION),
