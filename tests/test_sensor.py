@@ -51,6 +51,7 @@ def test_metadata_entities_share_one_device():
     for entity in entities.entities:
         assert entity._attr_device_info["identifiers"] == {("saulach", "bridge_jakob")}
         assert entity._attr_device_info["name"] == "Bridge Jakob"
+        assert entity._attr_device_info["model"] == "bridge_jakob"
 
 
 def test_metadata_entities_are_diagnostic_category():

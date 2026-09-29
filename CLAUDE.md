@@ -408,13 +408,18 @@ bridge with no metadata yet (a blueprint-based peer, which never sends §9 at al
 Saulach peer whose first `time_pattern` tick hasn't landed) simply shows no firmware
 version rather than the misleading constant.
 
-**Remote device's displayed name.** A remote bridge's `bridge_name` (§1) is a
-human-chosen label, not guaranteed unique across instances — two peers can easily end
-up with the same one (e.g. both left it at its default). `bridge_id`, derived from it
-by slugifying, always is unique in practice (loop prevention, §5, depends on it). Both
-`BridgedSensorEntity` (§5a/§3) and `BridgeMetadataEntities` (above) show the device's
-name as `"{bridge_name} ({bridge_id})"` rather than the bare name, so a lookalike name
-never leaves the *actual* peer ambiguous — this matters most in the
-`saulach.depublish_bridge` device picker, where picking the wrong lookalike durably
-clears the wrong peer's entities. Purely a receiving-side display choice, same shape as
-the firmware note above; the outgoing wire payload (§3) is unchanged.
+**Remote device's `model`.** A remote bridge's `bridge_name` (§1) is a human-chosen
+label, not guaranteed unique across instances — two peers can easily end up with the
+same one (e.g. both left it at its default). `bridge_id`, derived from it by
+slugifying, always is unique in practice (loop prevention, §5, depends on it). Both
+`BridgedSensorEntity` (§5a/§3) and `BridgeMetadataEntities` (above) set
+`device_info["model"]` to `bridge_id`, so a lookalike `bridge_name` doesn't leave the
+*actual* peer ambiguous when you look closer — e.g. in the `saulach.depublish_bridge`
+device picker, where picking the wrong lookalike durably clears the wrong peer's
+entities. This deliberately does **not** touch `device_info["name"]` — an earlier
+version tried suffixing the bridge_id onto the name itself, which does disambiguate the
+device, but changes what the device is *called* everywhere it's listed (Settings >
+Devices included), not just where you're specifically trying to tell two lookalikes
+apart; `model` is secondary/detail info, not identity, so it doesn't have that
+side effect. Purely a receiving-side display choice, same shape as the firmware note
+above; the outgoing wire payload (§3) is unchanged.

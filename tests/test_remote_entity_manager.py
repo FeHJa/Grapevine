@@ -15,7 +15,7 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 
 from custom_components.saulach.const import CONF_SHARED_DISCOVERY_PREFIX, DOMAIN
-from custom_components.saulach.remote_entity_manager import RemoteEntityManager, _device_display_name
+from custom_components.saulach.remote_entity_manager import RemoteEntityManager
 
 DISCOVERY_TOPIC = "share/homeassistant/sensor/garage_humidity/config"
 
@@ -72,21 +72,6 @@ def _run(coro):
     return asyncio.run(coro)
 
 
-# --- _device_display_name ---
-
-
-def test_device_display_name_suffixes_bridge_id():
-    assert _device_display_name("Bridge Other", "other_bridge") == "Bridge Other (other_bridge)"
-
-
-def test_device_display_name_falls_back_to_bridge_id_when_name_missing():
-    assert _device_display_name(None, "other_bridge") == "other_bridge"
-
-
-def test_device_display_name_returns_name_as_is_when_bridge_id_missing():
-    assert _device_display_name("Bridge Other", None) == "Bridge Other"
-
-
 def test_creates_entity_on_first_discovery():
     hass = HomeAssistant()
     manager, added = _make_manager(hass)
@@ -101,12 +86,14 @@ def test_creates_entity_on_first_discovery():
     assert entity._attr_native_unit_of_measurement == "%"
     assert entity._attr_device_info == {
         "identifiers": {(DOMAIN, "other_bridge")},
-        # bridge_id-suffixed -- two peers' human-chosen bridge_name can
-        # collide (e.g. both left it at its default), but bridge_id is
-        # always unique, which matters most in the saulach.depublish_bridge
-        # device picker: picking the wrong lookalike durably clears the
-        # wrong peer's entities.
-        "name": "Bridge Other (other_bridge)",
+        "name": "Bridge Other",
+        # model is bridge_id, not the human-chosen name -- two peers can
+        # end up with the same bridge_name (e.g. both left it at its
+        # default), but bridge_id is, in practice, always unique. Kept
+        # out of the primary name/identity shown everywhere (that's what
+        # broke when this was tried, see PROTOCOL.md's device-name note)
+        # -- surfaced as secondary/detail info instead.
+        "model": "other_bridge",
     }
 
 
@@ -498,10 +485,8 @@ def test_metadata_creates_diagnostic_entities_for_known_bridge():
     }
     for entity in diagnostic_entities:
         assert entity._attr_device_info["identifiers"] == {(DOMAIN, "other_bridge")}
-        # bridge_id-suffixed (issue: two peers' human-chosen names can
-        # collide, e.g. both left bridge_name at its default) -- see
-        # test_device_display_name_* below for the formatting itself.
-        assert entity._attr_device_info["name"] == "Bridge Other (other_bridge)"
+        assert entity._attr_device_info["name"] == "Bridge Other"
+        assert entity._attr_device_info["model"] == "other_bridge"
         assert "0.1.3" in entity._attr_device_info["sw_version"]
         assert "protocol v1" in entity._attr_device_info["sw_version"]
 
