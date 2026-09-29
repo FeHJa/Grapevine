@@ -653,6 +653,35 @@ def test_depublish_bridge_removes_a_stale_entity_never_rediscovered_this_session
     assert er.async_get(hass).async_get("sensor.stale_bridge_garage_humidity") is None
 
 
+def test_depublish_bridge_clears_a_stale_entity_using_the_older_dot_unique_id_convention():
+    # Bug: unique_ids built under the older "{bridge_id}.{entity_id}"
+    # convention (is_own_message's second recognized form -- e.g. a
+    # pre-rename install's leftover entities) have no "::" to split on.
+    # Naive `::`-only parsing treated the whole unique_id as a topic-less
+    # diagnostic entity and silently skipped publishing the clear --
+    # looked like it worked (the registry entry was still removed) while
+    # leaving the discovery message retained on the broker forever.
+    hass = HomeAssistant()
+    manager, added = _make_manager(hass)
+    device = dr.async_get(hass).async_get_or_create(
+        config_entry_id="entry1",
+        identifiers={(DOMAIN, "grapevine_jakob")},
+        name="Grapevine Jakob",
+    )
+    er.async_get(hass)._register(
+        "sensor.grapevine_jakob_battery_level_nominal",
+        device.id,
+        "grapevine_jakob.sensor.battery_level_nominal",
+    )
+
+    removed = _run(manager.async_depublish_bridge("grapevine_jakob", device.id))
+
+    assert removed == 1
+    published = {(topic, payload, retain) for topic, payload, retain in mqtt._state(hass).published}
+    assert ("share/homeassistant/sensor/battery_level_nominal/config", "", True) in published
+    assert er.async_get(hass).async_get("sensor.grapevine_jakob_battery_level_nominal") is None
+
+
 def test_metadata_diagnostic_entities_survive_partial_entity_removal():
     hass = HomeAssistant()
     manager, added = _make_manager(hass)

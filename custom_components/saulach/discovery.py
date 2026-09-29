@@ -51,6 +51,31 @@ def domain_from_unique_id(unique_id: str) -> str | None:
     return domain_from_entity_id(entity_id)
 
 
+def entity_id_from_unique_id(unique_id: str, slug_bridge_name: str) -> str | None:
+    """Strips a *known* `slug_bridge_name` prefix off `unique_id`, accepting
+    either separator convention this protocol has used: `::` (current,
+    §3) or `.` (older -- the same second form `is_own_message` above still
+    recognizes). Unlike domain_from_unique_id, the caller here already
+    knows which bridge_id it's looking for (from a device identifier, not
+    guessed from the payload), so there's no ambiguity to resolve --
+    returns None only if unique_id doesn't start with either form of that
+    exact prefix.
+
+    This exists because a unique_id built under the older dot convention
+    silently defeated saulach.depublish_bridge's topic reconstruction: it
+    has no "::" to split on, so naively parsing only that form treated
+    the whole unique_id as a diagnostic entity with no topic of its own
+    and skipped clearing it entirely -- looked like it worked locally
+    (the registry entry was still removed) while leaving the discovery
+    message retained on the broker forever, to redeliver and re-create
+    the entity on every future restart."""
+    for separator in ("::", "."):
+        prefix = f"{slug_bridge_name}{separator}"
+        if unique_id.startswith(prefix):
+            return unique_id[len(prefix) :]
+    return None
+
+
 def _title_case_object_id(object_id: str) -> str:
     return object_id.replace("_", " ").title()
 
