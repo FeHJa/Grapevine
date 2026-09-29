@@ -231,15 +231,28 @@ peers that were never rediscovered this session, so they have no in-memory footp
 all and show as "Unavailable" while still sitting in the registry. For each entity it
 finds, it:
 - publishes an empty retained payload to that entity's own discovery topic,
-  reconstructed from its `unique_id` (`{bridge_id}::{entity_id}`, §3) — the same topic
-  and removal convention as §5b, indistinguishable to any other receiver from the
-  origin bridge's own depublish, and
+  reconstructed from its `unique_id` (§3) — the same topic and removal convention as
+  §5b, indistinguishable to any other receiver from the origin bridge's own depublish,
+  and
 - tears it down immediately, through the normal §5b path if `RemoteEntityManager` does
   have it live this session, or directly from the registry otherwise, rather than
   waiting on its own publish to loop back over MQTT.
 
 Diagnostic entities (§9) have no discovery topic of their own — they're removed as a
 side effect once every real entity for the bridge is gone, same as an organic removal.
+
+**Bugfix: reconstructing the topic must accept either unique_id convention.** A bridge
+long dead enough to need this service is exactly the kind of peer likely to predate the
+`::` separator §3 specifies today (e.g. a pre-rename install using the older
+`{bridge_id}.{entity_id}` form §5's loop guard still recognizes). Splitting on `::`
+alone found nothing to split on for that form, silently treated the *entire* unique_id
+as a diagnostic entity with no topic of its own, and skipped publishing the clear —
+looked like it worked (the registry entry was still removed locally) while the
+discovery message stayed retained on the broker forever, to be redelivered and
+re-materialize the same "dead" entity on every future restart. The fix strips the
+*known* `bridge_id` (not guessed — the service is always called with an exact one)
+using either separator, the same acceptance `is_own_message` already applies when
+recognizing an incoming message as its own.
 
 Publishing to a topic this instance didn't originate is unusual but not a protocol
 violation — the shared prefix has no per-topic ownership model, and §5b's convention

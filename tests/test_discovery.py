@@ -10,6 +10,7 @@ from custom_components.saulach.discovery import (
     build_metadata_payload,
     domain_from_entity_id,
     domain_from_unique_id,
+    entity_id_from_unique_id,
     is_own_message,
     normalize_prefix,
     object_id_from_entity_id,
@@ -59,6 +60,38 @@ def test_domain_from_unique_id_recovers_source_domain():
 
 def test_domain_from_unique_id_returns_none_without_bridge_prefix():
     assert domain_from_unique_id("not_our_convention") is None
+
+
+# --- entity_id_from_unique_id ---
+
+
+def test_entity_id_from_unique_id_strips_double_colon_convention():
+    assert (
+        entity_id_from_unique_id("grapevine_jakob::sensor.battery_level_nominal", "grapevine_jakob")
+        == "sensor.battery_level_nominal"
+    )
+
+
+def test_entity_id_from_unique_id_strips_older_dot_convention():
+    # issue: saulach.depublish_bridge silently skipped clearing the
+    # discovery topic for exactly this shape -- no "::" to split on, so
+    # naive `::`-only parsing treated the whole string as a topic-less
+    # diagnostic entity and never published the clear.
+    assert (
+        entity_id_from_unique_id("grapevine_jakob.sensor.battery_level_nominal", "grapevine_jakob")
+        == "sensor.battery_level_nominal"
+    )
+
+
+def test_entity_id_from_unique_id_diagnostic_entity_has_no_dot():
+    # BridgeMetadataEntities' own unique_ids (always "::", built locally)
+    # -- no entity_id suffix, correctly distinguishable from a real
+    # bridged entity by the caller checking for "." in the result.
+    assert entity_id_from_unique_id("grapevine_jakob::entity_count", "grapevine_jakob") == "entity_count"
+
+
+def test_entity_id_from_unique_id_returns_none_for_different_bridge():
+    assert entity_id_from_unique_id("other_bridge::sensor.x", "grapevine_jakob") is None
 
 
 # --- normalize_prefix ---

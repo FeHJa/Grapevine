@@ -51,13 +51,17 @@ domain-global services to the config entry they were called for.
   global, so adding this later shouldn't require rework. Two entries sharing a
   `shared_discovery_prefix` would each independently process every retained federation
   message — wasteful but not incorrect.
-- **Self-loop reappearance, under investigation.** A user's own pre-rename bridge
-  identity has been seen reappearing locally even after depublishing it from a peer's
-  instance. Not yet root-caused: either a peer's depublish only cleared the topics *it*
-  had discovered (leaving others this instance still holds retained), or the loop
-  guard's `bridge_id`/`unique_id` check no longer matches this instance's *current*
-  identity after a rename — which would be a real bug in the loop guard, not just a
-  depublish gap. Needs a reproduction that confirms which before it can be scoped.
+- ~~Self-loop reappearance~~ **Resolved:** a pre-rename bridge identity kept reappearing
+  even after `saulach.depublish_bridge` was run against it. Root cause: that service
+  reconstructed each entity's discovery topic from its `unique_id` assuming the current
+  `::` separator (§3); a pre-rename identity's leftover entities used the older `.`
+  convention (§5's loop guard already accepted both, but the service's topic
+  reconstruction didn't), so it silently skipped publishing the clear for them — the
+  registry entry was still removed locally, making it *look* like it worked, while the
+  discovery message stayed retained on the broker forever and kept re-materializing the
+  entity on every restart. No loop-guard bug, and no live sender anywhere — just a
+  never-actually-cleared retained message. Fixed in `RemoteEntityManager.async_depublish_bridge`;
+  see `PROTOCOL.md` §5c's bugfix note.
 
 ## Phase 3 — manifest protocol (not started)
 

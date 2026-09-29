@@ -18,7 +18,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import mqtt_io
 from .const import CONF_SHARED_DISCOVERY_PREFIX, DOMAIN, PROTOCOL_VERSION
-from .discovery import domain_from_unique_id, object_id_from_entity_id
+from .discovery import domain_from_unique_id, entity_id_from_unique_id, object_id_from_entity_id
 from .sensor import BridgedSensorEntity, BridgeMetadataEntities
 
 _LOGGER = logging.getLogger(__name__)
@@ -168,16 +168,28 @@ class RemoteEntityManager:
         because nothing has re-discovered them since a previous session
         (their retained discovery message is long gone). Publishes an
         empty retained payload to every real bridged entity's own
-        discovery topic -- reconstructed from its unique_id
-        ("{bridge_id}::{entity_id}", §3), the durable fix since the
-        broker won't redeliver a cleared topic on our next restart -- and
-        tears each one down immediately: through the normal
-        async_handle_removal path if it's live this session, or directly
-        from the registry otherwise (nothing live to call .async_remove()
-        on). Diagnostic entities (§9) have no discovery topic of their
-        own; anything still left on the device afterwards -- diagnostics
-        that were never live this session either -- is swept up directly
-        too. Returns how many discovery topics were published to."""
+        discovery topic -- reconstructed from its unique_id (§3), the
+        durable fix since the broker won't redeliver a cleared topic on
+        our next restart -- and tears each one down immediately: through
+        the normal async_handle_removal path if it's live this session,
+        or directly from the registry otherwise (nothing live to call
+        .async_remove() on). Diagnostic entities (§9) have no discovery
+        topic of their own; anything still left on the device afterwards
+        -- diagnostics that were never live this session either -- is
+        swept up directly too. Returns how many discovery topics were
+        published to.
+
+        unique_id parsing accepts either separator convention this
+        protocol has used (`::`, current; `.`, older -- see
+        entity_id_from_unique_id) -- a bridge_id known from a stale
+        pre-rename install is exactly the case likely to still carry the
+        older form. Naively assuming `::` here silently skipped clearing
+        those entities' discovery topics entirely (no "::" to split on,
+        so the whole unique_id looked like a topic-less diagnostic
+        entity), which looked like it worked -- the registry entry was
+        still removed locally -- while leaving the discovery message
+        retained on the broker forever, redelivered and re-materialized
+        on every future restart."""
         entity_registry = er.async_get(self._hass)
         shared_discovery_prefix = self._entry.data[CONF_SHARED_DISCOVERY_PREFIX]
         device_entities = list(
@@ -186,9 +198,9 @@ class RemoteEntityManager:
 
         published = 0
         for reg_entry in device_entities:
-            unique_id = reg_entry.unique_id
-            _, _, suffix = (unique_id or "").partition("::")
-            if "." not in suffix:
+            unique_id = reg_entry.unique_id or ""
+            suffix = entity_id_from_unique_id(unique_id, bridge_id)
+            if suffix is None or "." not in suffix:
                 continue  # diagnostic entity -- no topic of its own, swept up below
             object_id = object_id_from_entity_id(suffix)
             topic = f"{shared_discovery_prefix}sensor/{object_id}/config"
