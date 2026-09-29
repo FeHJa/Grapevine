@@ -407,3 +407,14 @@ set it, `"1.0.3"` would win almost every time and permanently hide the real vers
 bridge with no metadata yet (a blueprint-based peer, which never sends §9 at all, or a
 Saulach peer whose first `time_pattern` tick hasn't landed) simply shows no firmware
 version rather than the misleading constant.
+
+**Remote device's displayed name.** A remote bridge's `bridge_name` (§1) is a
+human-chosen label, not guaranteed unique across instances — two peers can easily end
+up with the same one (e.g. both left it at its default). `bridge_id`, derived from it
+by slugifying, always is unique in practice (loop prevention, §5, depends on it). Both
+`BridgedSensorEntity` (§5a/§3) and `BridgeMetadataEntities` (above) show the device's
+name as `"{bridge_name} ({bridge_id})"` rather than the bare name, so a lookalike name
+never leaves the *actual* peer ambiguous — this matters most in the
+`saulach.depublish_bridge` device picker, where picking the wrong lookalike durably
+clears the wrong peer's entities. Purely a receiving-side display choice, same shape as
+the firmware note above; the outgoing wire payload (§3) is unchanged.
