@@ -408,6 +408,21 @@ bridge with no metadata yet (a blueprint-based peer, which never sends §9 at al
 Saulach peer whose first `time_pattern` tick hasn't landed) simply shows no firmware
 version rather than the misleading constant.
 
+**Bugfix: the displayed firmware never refreshed after the first sighting.**
+`BridgeMetadataEntities`'s `device_info["sw_version"]` was set once, in its
+constructor, the first time a given bridge's metadata was ever seen. Every later
+redelivery — including the peer actually upgrading and restarting — went through
+`BridgeMetadataEntities.update()` instead of the constructor, which only refreshed the
+three visible diagnostic sensor values (entity count, last heartbeat, HA version), never
+`device_info`. The displayed firmware stayed frozen at whatever it was the very first
+time, permanently, no matter how many times the peer actually upgraded afterward — only
+rebuilding the diagnostic entities from scratch (e.g. a full depublish + rediscovery
+cycle) would ever pick up a new value. `update()` now also recomputes `sw_version` from
+the incoming message's `integration_version`/`protocol_version` fields and writes it
+back into the (shared, by reference) `device_info` dict before refreshing the three
+sensor values — the `async_write_ha_state()` call each of those already makes is what
+pushes the refreshed `device_info` to the device registry.
+
 **Remote device's `model`.** A remote bridge's `bridge_name` (§1) is a human-chosen
 label, not guaranteed unique across instances — two peers can easily end up with the
 same one (e.g. both left it at its default). `bridge_id`, derived from it by
